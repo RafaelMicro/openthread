@@ -16,7 +16,7 @@ void mbedtls_sha256_init(mbedtls_sha256_context* ctx) {
     memset(ctx->buffer, 0, sizeof(ctx->buffer));
     hosal_crypto_sha256_init();
 
-#if defined(CONFIG_RT584H) || defined(config_rt584) || defined(CONFIG_RT584S)
+#if defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584S)
     hosal_sha256_dev_t* sha_dev = (hosal_sha256_dev_t*)ctx->sha_hw_ctx;
     sha_dev->crypto_operation = HOSAL_SHA256_DIGEST_INIT;
 
@@ -70,7 +70,7 @@ int mbedtls_sha256_starts(mbedtls_sha256_context* ctx, int is224) {
         return -1;
 
     hosal_sha256_dev_t* sha_dev = (hosal_sha256_dev_t*)ctx->sha_hw_ctx;
-#if defined(CONFIG_RT584H) || defined(config_rt584) || defined(CONFIG_RT584S)
+#if defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584S)
     sha_dev->crypto_operation = HOSAL_SHA256_DIGEST_STARTS;
 #else
     sha_dev->crypto_operation = HOSAL_SHA256_DIGEST_INIT;
