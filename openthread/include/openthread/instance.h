@@ -38,6 +38,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stddef.h>
 
 #include <openthread/error.h>
 
