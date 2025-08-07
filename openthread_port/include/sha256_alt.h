@@ -17,8 +17,6 @@ typedef struct {
     size_t total_len;   /*!< Total length of input processed */
 } mbedtls_sha256_context;
 
-#include "mbedtls/sha256.h"
-
 #ifdef __cplusplus
 }
 #endif
