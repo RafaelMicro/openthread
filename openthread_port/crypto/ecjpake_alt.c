@@ -4,16 +4,6 @@
 #include "hosal_status.h"
 #include "log.h"
 
-/**
- * Roles in the EC J-PAKE exchange
- */
-typedef enum {
-    MBEDTLS_ECJPAKE_CLIENT = 0,         /**< Client                         */
-    MBEDTLS_ECJPAKE_SERVER,             /**< Server                         */
-    MBEDTLS_ECJPAKE_NONE,               /**< Undefined                      */
-} mbedtls_ecjpake_role;
-
-
 void mbedtls_ecjpake_init(mbedtls_ecjpake_context* ctx) {
     // printf("%s\n", __func__);
     if (ctx == NULL) {

@@ -6,11 +6,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* padlock.c and aesni.c rely on these values! */
-#define MBEDTLS_AES_ENCRYPT     1 /**< AES encryption. */
-#define MBEDTLS_AES_DECRYPT     0 /**< AES decryption. */
-
 typedef struct {
     void* aes_dev;
     uint8_t key[16];
@@ -21,7 +16,7 @@ typedef struct mbedtls_aes_xts_context {
     mbedtls_aes_context tweak;
 } mbedtls_aes_xts_context;
 
-
+#include "mbedtls/aes.h"
 
 #ifdef __cplusplus
 }

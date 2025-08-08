@@ -17,7 +17,7 @@ typedef struct mbedtls_ecjpake_context {
     int point_format;
 } mbedtls_ecjpake_context;
 
-
+#include "mbedtls/ecjpake.h"
 
 #ifdef __cplusplus
 }
