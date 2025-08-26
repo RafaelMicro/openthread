@@ -16,7 +16,7 @@
 #include "stdio.h"
 #include "wdt.h"
 
-#if defined(CONFIG_RT584H)
+#if defined(CONFIG_RT584H) || defined(CONFIG_RT584L)
 #include "dpd.h"
 #endif
 
