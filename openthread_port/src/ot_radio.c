@@ -545,8 +545,12 @@ otError otPlatRadioDisable(otInstance *aInstance)
     {
         otLogDebgPlat("State=OT_RADIO_STATE_DISABLED");
         sState = OT_RADIO_STATE_DISABLED;
-        lmac15p4_auto_state_set(false);
-        sAuto_State_Set = false;
+
+        if (sAuto_State_Set != false)
+        {
+            lmac15p4_auto_state_set(false);
+            sAuto_State_Set = false;
+        }
     }
 
     return OT_ERROR_NONE;
@@ -708,9 +712,11 @@ otError otPlatRadioReceive(otInstance *aInstance, uint8_t aChannel)
             sCurrentChannel = aChannel;
             lmac15p4_channel_set((lmac154_channel_t)(sCurrentChannel - kMinChannel));
         }
-
-        lmac15p4_auto_state_set(true);
-        sAuto_State_Set = true;
+        if (sAuto_State_Set != true)
+        {
+            lmac15p4_auto_state_set(true);
+            sAuto_State_Set = true;
+        }
     }
 
     return OT_ERROR_NONE;
