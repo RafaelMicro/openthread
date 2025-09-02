@@ -97,7 +97,7 @@ static void otrStackTask(void* aContext) {
     );
 
     while (true) {
-        if (ulTaskNotifyTake(pdFALSE, 5) != 0) {
+        if (ulTaskNotifyTake(pdFALSE, 1) != 0) {
             otTaskletsProcess(ot_instance);
             otSysProcessDrivers(ot_instance);
 #ifdef CONFIG_OT_RCP_EZMESH

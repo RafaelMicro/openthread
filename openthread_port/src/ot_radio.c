@@ -1285,6 +1285,7 @@ static void _RxDoneEvent(uint16_t packet_length, uint8_t *rx_data_address,
     uint32_t rx_now32Time = 0U;
     static uint32_t rx_timerWraps = 0U, rx_prev32Time = 0U;    
     static uint8_t rx_done_cnt = 0;
+    uint8_t pending_bit_status = 0;
 
     if (crc_status == 0)
     {
@@ -1305,7 +1306,7 @@ static void _RxDoneEvent(uint16_t packet_length, uint8_t *rx_data_address,
             p->frame.mInfo.mRxInfo.mTimestamp = longtime_to_longlong_time(&rx_prev32Time, rx_now32Time, &rx_timerWraps);
             // log_info("rx time %ld", p->frame.mInfo.mRxInfo.mTimestamp);
             memcpy(p->frame.mPsdu, (rx_data_address + 8), (packet_length-9));
-            p->frame.mLength = (packet_length-9);          
+            p->frame.mLength = (packet_length-9);
             p->frame.mChannel = sCurrentChannel;
             p->frame.mInfo.mRxInfo.mRssi = -rssi;
             p->frame.mInfo.mRxInfo.mLqi = ((RAFAEL_RECEIVE_SENSITIVITY - rssi) * 0xFF) / RAFAEL_RECEIVE_SENSITIVITY;
@@ -1316,14 +1317,15 @@ static void _RxDoneEvent(uint16_t packet_length, uint8_t *rx_data_address,
             p->frame.mInfo.mRxInfo.mTimestamp -= (50 + (p->frame.mLength + 1) * 32);
 #endif
             p->frame.mInfo.mRxInfo.mAckedWithFramePending = false;
+            pending_bit_status = (((*(rx_data_address + 8 + p->frame.mLength + 3)) & 0x20) >> 5);
             if( 
 #if OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2                
             ((otMacFrameIsVersion2015(&p->frame) && otMacFrameIsCommand(&p->frame)) ||
-              otMacFrameIsData(&p->frame) || otMacFrameIsDataRequest(&p->frame))  
+              /*otMacFrameIsData(&p->frame) || */otMacFrameIsDataRequest(&p->frame))  
 #else
-        otMacFrameIsDataRequest(&p->frame)
+            otMacFrameIsDataRequest(&p->frame)
 #endif              
-             && hasFramePending(&p->frame))
+            && pending_bit_status)  //&& hasFramePending(&p->frame))
             {
                 p->frame.mInfo.mRxInfo.mAckedWithFramePending = true;
             }
