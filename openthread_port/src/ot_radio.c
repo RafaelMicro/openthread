@@ -1229,8 +1229,8 @@ static void _TxDoneEvent(uint32_t tx_status)
 {
     uint32_t ack_now32Time = 0U;
     static uint32_t ack_timerWraps = 0U, ack_prev32Time = 0U;
-    otRadioFrame        *txframe;
-
+    otRadioFrame *txframe;
+    uint8_t ack_rssi = 127;
     // log_info("tx d");
     // lmac15p4_auto_state_set(true);
     if (otRadio_var.pTxFrame) 
@@ -1253,7 +1253,7 @@ static void _TxDoneEvent(uint32_t tx_status)
         }
         else if (0x40 == tx_status || 0x80 == tx_status) 
         {
-            otRadio_var.pAckFrame->mLength = lmac15p4_read_ack((uint8_t *)otRadio_var.pAckFrame->mPsdu, (uint8_t *)&ack_now32Time, 0);
+            otRadio_var.pAckFrame->mLength = lmac15p4_read_ack((uint8_t *)otRadio_var.pAckFrame->mPsdu, (uint8_t *)&ack_now32Time, 0, (uint8_t *)&ack_rssi);
             otRadio_var.pAckFrame->mInfo.mRxInfo.mTimestamp = longtime_to_longlong_time(&ack_prev32Time, ack_now32Time, &ack_timerWraps);
             otRadio_var.pAckFrame->mInfo.mRxInfo.mTimestamp -= (130 + (otRadio_var.pAckFrame->mLength + 1) * 32);
 
