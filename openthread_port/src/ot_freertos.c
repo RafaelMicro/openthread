@@ -90,7 +90,7 @@ static void otrStackTask(void* aContext) {
 #if OPENTHREAD_ENABLE_DIAG
                    otDiagInit(ot_instance);
 #endif
-                   otAppCliInit(ot_instance);
+                   otrInitUser(ot_instance);
 #ifdef CONFIG_OT_RCP_EZMESH
                    rf_ot_cpc_init();
 #endif
