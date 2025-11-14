@@ -182,6 +182,9 @@ elseif(CONFIG_OT_DEVICE_TYPE_RCP)
     option(OT_FTD "" OFF)
     option(OT_MTD "" OFF)
     option(OT_RCP "" ON)
+    add_compile_options(
+        -DOPENTHREAD_CONFIG_MAC_SOFTWARE_TX_SECURITY_ENABLE=1
+    )
 endif()
 
 add_compile_options(
