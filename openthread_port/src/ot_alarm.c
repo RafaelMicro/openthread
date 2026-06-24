@@ -41,7 +41,7 @@ static uint32_t otAlarm_offset = 0xFFFFFFF;
 #if (OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE == 1)
 #define ALARM_TIMER_TICK_TO_MICRO_SEC(n) (n * 25ul)
 #define ALARM_MICRO_SEC_TO_TIMER_TICK(n)                                       \
-    (((n % 25ul) > 13ul) ? ((n / 25ul) + 1ul) : (n / 25ul))
+    ((uint32_t)((((uint64_t)(us) * 4ULL) + 62ULL) / 125ULL))
 #define ALRAM_TIMER_COUNTER_COMPARE1(n1, n2)                                   \
     ((n1 - n2) <= (0xFFFFFFFF / 2)) ? (n1 - n2) : 0
 #define ALRAM_TIMER_COUNTER_COMPARE2(n1, n2)                                   \
@@ -74,7 +74,7 @@ void ot_alarmInit(void) {
     timern_t* TIMER = TIMER3;
     NVIC_DisableIRQ((IRQn_Type)(Timer3_IRQn));
     NVIC_SetPriority((IRQn_Type)(Timer3_IRQn), 2);
-    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584S)
+    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
     slowtimern_t* TIMER = SLOWTIMER0;
     NVIC_DisableIRQ((IRQn_Type)(SlowTimer0_IRQn));
     NVIC_SetPriority((IRQn_Type)(SlowTimer0_IRQn), 2);
@@ -88,13 +88,11 @@ void ot_alarmInit(void) {
     TIMER->control.bit.mode = TIMER_FREERUN_MODE;
     TIMER->control.bit.en = 0;
 
-    timer_callback_register(3, otPlatALarm_usTimerCallback);
-
-    // Timer_Int_Callback_Register(3, otPlatALarm_usTimerCallback);
-
     #if defined(CONFIG_RT581) || defined(CONFIG_RT582) || defined(CONFIG_RT583)
+    timer_callback_register(3, otPlatALarm_usTimerCallback);
     NVIC_EnableIRQ((IRQn_Type)Timer3_IRQn);
-    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584S)
+    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
+    slowtimer_callback_register(0, otPlatALarm_usTimerCallback);
     NVIC_EnableIRQ((IRQn_Type)SlowTimer0_IRQn);
     #endif
 #endif
@@ -158,7 +156,7 @@ void otPlatAlarmMicroStartAt(otInstance* aInstance, uint32_t aT0,
     OT_UNUSED_VARIABLE(aInstance);
     #if defined(CONFIG_RT581) || defined(CONFIG_RT582) || defined(CONFIG_RT583)
     timern_t* TIMER = TIMER3;
-    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584S)
+    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
     slowtimern_t* TIMER = SLOWTIMER0;
     #endif
     uint32_t otExpectedIdleTime_us = (aT0 + aDt);
@@ -190,7 +188,7 @@ void otPlatAlarmMicroStop(otInstance* aInstance) {
     OT_UNUSED_VARIABLE(aInstance);
     #if defined(CONFIG_RT581) || defined(CONFIG_RT582) || defined(CONFIG_RT583)
     timern_t* TIMER = TIMER3;
-    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584S)
+    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
     slowtimern_t* TIMER = SLOWTIMER0;
     #endif
     TIMER->control.bit.en = 0;
