@@ -41,7 +41,7 @@ static uint32_t otAlarm_offset = 0xFFFFFFF;
 #if (OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE == 1)
 #define ALARM_TIMER_TICK_TO_MICRO_SEC(n) (n * 25ul)
 #define ALARM_MICRO_SEC_TO_TIMER_TICK(n)                                       \
-    ((uint32_t)((((uint64_t)(us) * 4ULL) + 62ULL) / 125ULL))
+    ((uint32_t)((((uint64_t)(n) * 4ULL) + 62ULL) / 125ULL))
 #define ALRAM_TIMER_COUNTER_COMPARE1(n1, n2)                                   \
     ((n1 - n2) <= (0xFFFFFFFF / 2)) ? (n1 - n2) : 0
 #define ALRAM_TIMER_COUNTER_COMPARE2(n1, n2)                                   \
