@@ -230,7 +230,8 @@ otRadioCaps otPlatRadioGetCaps(otInstance* aInstance) {
                                 OT_RADIO_CAPS_TRANSMIT_TIMING   |
 #endif
 #endif
-                                OT_RADIO_CAPS_CSMA_BACKOFF
+                                OT_RADIO_CAPS_CSMA_BACKOFF |
+                                OT_RADIO_CAPS_RECEIVE_TIMING
                                );
     return capabilities;
 }
@@ -959,9 +960,8 @@ void otPlatRadioUpdateCslSampleTime(otInstance *aInstance, uint32_t aCslSampleTi
 uint8_t otPlatRadioGetCslAccuracy(otInstance *aInstance)
 {
     OT_UNUSED_VARIABLE(aInstance);
-    
     //return spRFBCtrl->csl_accuracy_get();
-    return 255;
+    return 200;
 }
 
 uint8_t otPlatRadioGetCslUncertainty(otInstance *aInstance)
@@ -971,7 +971,7 @@ uint8_t otPlatRadioGetCslUncertainty(otInstance *aInstance)
 #ifdef CONFIG_OT_DEVICE_TYPE_RCP
     return 255;
 #else
-    return 175;
+    return 250;
 #endif
 
 }
@@ -1027,6 +1027,20 @@ otError otPlatRadioGetCca(otInstance *aInstance, int8_t *aThreshold, uint16_t *t
     *duration = sCCADuration;
     
 
+    return OT_ERROR_NONE;
+}
+
+otError otPlatRadioReceiveAt(otInstance *aInstance,
+                                                     uint8_t     aChannel,
+                                                     uint32_t    aStart,
+                                                     uint32_t    aDuration)
+{
+    if (aChannel != sCurrentChannel)
+    {
+        sCurrentChannel = aChannel;
+        lmac15p4_channel_set((lmac154_channel_t)(sCurrentChannel - kMinChannel));
+    }
+    lmac15p4_csl_receive_at_set(aStart, aDuration);
     return OT_ERROR_NONE;
 }
 
@@ -1332,13 +1346,12 @@ static void _RxDoneEvent(uint16_t packet_length, uint8_t *rx_data_address,
 
 #if OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2
         if (otMacFrameIsVersion2015(&p->frame) &&
-            otMacFrameIsSecurityEnabled(&p->frame) &&
             otMacFrameIsAckRequested(&p->frame))
         {
             p->frame.mInfo.mRxInfo.mAckedWithSecEnhAck = true;
             p->frame.mInfo.mRxInfo.mAckFrameCounter = ++sMacFrameCounter;
         }
-#endif // OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2            
+#endif // OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2
 
             OT_ENTER_CRITICAL();
             utils_dlist_add_tail(&p->dlist, &otRadio_var.rxFrameList);

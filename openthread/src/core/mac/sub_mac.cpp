@@ -1042,6 +1042,16 @@ void SubMac::RadioSample(void)
     {
         UpdateRadioSampleState();
     }
+    else
+    {
+        // With receive-timing, the CSL receive windows are driven entirely by
+        // `mCslTimer`/`Radio::ReceiveAt()`, and the radio is expected to be
+        // asleep between windows. A prior continuous `Radio::Receive()` (e.g.
+        // from an active/energy scan) keeps RX on with no auto-expiry, so it
+        // would linger until the next `ReceiveAt()` and waste power. Put the
+        // radio to sleep now so the next CSL window starts from a clean state.
+        IgnoreError(Get<Radio>().Sleep());
+    }
 
 #if OPENTHREAD_CONFIG_MAC_FILTER_ENABLE
 exit:

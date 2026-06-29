@@ -38,19 +38,16 @@
 static TimerHandle_t otAlarm_timerHandle = NULL;
 static uint32_t otAlarm_offset = 0xFFFFFFF;
 
+#define OT_US_PER_MS            1000
 #if (OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE == 1)
-#define ALARM_TIMER_TICK_TO_MICRO_SEC(n) (n * 25ul)
-#define ALARM_MICRO_SEC_TO_TIMER_TICK(n)                                       \
-    ((uint32_t)((((uint64_t)(n) * 4ULL) + 62ULL) / 125ULL))
-#define ALRAM_TIMER_COUNTER_COMPARE1(n1, n2)                                   \
-    ((n1 - n2) <= (0xFFFFFFFF / 2)) ? (n1 - n2) : 0
-#define ALRAM_TIMER_COUNTER_COMPARE2(n1, n2)                                   \
-    ((n2 - n1) > (0xFFFFFFFF / 2)) ? ((0xFFFFFFFF - n2) + n1) : 0
-#define ALRAM_TIMER_COUNTER_CHECK(n1, n2)                                      \
-    (n1 > n2) ? ALRAM_TIMER_COUNTER_COMPARE1(n1, n2)                           \
-              : ALRAM_TIMER_COUNTER_COMPARE2(n1, n2)
+#if defined(CONFIG_RT581) || defined(CONFIG_RT582) || defined(CONFIG_RT583)
+    #define ALARM_MICRO_SEC_TO_TIMER_TICK(n)                                        \
+        ((uint32_t)((((uint64_t)(n)) + 12ULL) / 25ULL))
+#elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
+    #define ALARM_MICRO_SEC_TO_TIMER_TICK(n)                                        \
+        ((uint32_t)((((uint64_t)(n) * 4ULL) + 62ULL) / 125ULL))
+#endif
 #define ALRAM_SLEEP_WAKE_UP_COST_MS   (3ul)
-#define ALRAM_SLEEP_MINIMUM_PERIOD_MS (7ul)
 #endif
 
 static void otPlatALarm_msTimerCallback(TimerHandle_t xTimer) {
@@ -102,11 +99,9 @@ void ot_alarmTask(ot_system_event_t sevent) {
     if (!(OT_SYSTEM_EVENT_ALARM_ALL_MASK & sevent)) {
         return;
     }
-
     if (OT_SYSTEM_EVENT_ALARM_MS_EXPIRED & sevent) {
         otPlatAlarmMilliFired(otrGetInstance());
     }
-
 #if (OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE == 1)
     if (OT_SYSTEM_EVENT_ALARM_US_EXPIRED & sevent) {
         otPlatAlarmMicroFired(otrGetInstance());
@@ -114,23 +109,30 @@ void ot_alarmTask(ot_system_event_t sevent) {
 #endif
 }
 
-uint32_t otPlatTimeGetXtalAccuracy(void) { return SystemCoreClock; }
+uint16_t otPlatTimeGetXtalAccuracy(void)
+{
+    return 200;
+}
 
 void otPlatAlarmMilliStartAt(otInstance* aInstance, uint32_t aT0,
                              uint32_t aDt) {
     BaseType_t ret;
+    uint32_t fireTime = aT0 + aDt;
+    uint32_t now = otPlatAlarmMilliGetNow();
+    uint32_t diff = now - fireTime;  
+    bool isExpired = (diff & (1U << 31)) == 0; 
 
-    uint32_t elapseTime = otPlatAlarmMilliGetNow() - aT0;
-    uint32_t t = pdMS_TO_TICKS(aDt - elapseTime);
-
-    if (otAlarm_timerHandle && elapseTime < aDt && t > 0) {
-        ret = xTimerChangePeriod(otAlarm_timerHandle, t, 0);
+    if (!isExpired)
+    {
+        uint32_t remaining = fireTime - now;  
+        uint32_t ticks = pdMS_TO_TICKS(remaining);
+        ret = xTimerChangePeriod(otAlarm_timerHandle, ticks, 0);  
         configASSERT(ret == pdPASS);
-
-        return;
     }
-
-    OT_NOTIFY(OT_SYSTEM_EVENT_ALARM_MS_EXPIRED);
+    else
+    {
+        OT_NOTIFY(OT_SYSTEM_EVENT_ALARM_MS_EXPIRED);
+    }
 }
 
 void otPlatAlarmMilliStop(otInstance* aInstance) {
@@ -140,14 +142,17 @@ void otPlatAlarmMilliStop(otInstance* aInstance) {
 }
 
 uint32_t otPlatAlarmMilliGetNow(void) {
+#if (OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE == 1)
+    return (uint32_t)(otPlatTimeGet() / OT_US_PER_MS);  
+#else
     return xTaskGetTickCount() * portTICK_RATE_MS;
+#endif
 }
 
 #if (OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE == 1)
 inline uint32_t otPlatAlarmMicroGetNow(void) {
-    uint32_t rtc_curr_time = 0U;
+    uint32_t rtc_curr_time;
     lmac15p4_rtc_time_read((uint32_t*)&rtc_curr_time);
-
     return rtc_curr_time;
 }
 
@@ -159,26 +164,25 @@ void otPlatAlarmMicroStartAt(otInstance* aInstance, uint32_t aT0,
     #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
     slowtimern_t* TIMER = SLOWTIMER0;
     #endif
-    uint32_t otExpectedIdleTime_us = (aT0 + aDt);
     uint32_t Curr_us = otPlatTimeGet();
-    uint32_t UsRemainingTime = ALRAM_TIMER_COUNTER_CHECK(otExpectedIdleTime_us,
-                                                         Curr_us);
+    uint32_t fireTime = (aT0 + aDt);
+    uint32_t diff = Curr_us - fireTime;  
+    bool isExpired = (diff & (1U << 31)) == 0;
 
+    if (!isExpired) {
+        uint32_t remaining = fireTime - Curr_us;
 #if (CONFIG_HOSAL_SOC_IDLE_SLEEP == 1)
-    if (UsRemainingTime > (ALRAM_SLEEP_WAKE_UP_COST_MS * 1000)) {
-        UsRemainingTime -= (ALRAM_SLEEP_WAKE_UP_COST_MS * 1000);
-    }
-    if (UsRemainingTime > (ALRAM_SLEEP_MINIMUM_PERIOD_MS * 1000))
-#else
-    if (otExpectedIdleTime_us > Curr_us
-        && (otExpectedIdleTime_us - Curr_us) > 3000)
+        if (remaining > (ALRAM_SLEEP_WAKE_UP_COST_MS * OT_US_PER_MS)) {
+            remaining -= (ALRAM_SLEEP_WAKE_UP_COST_MS * OT_US_PER_MS);
+        }
 #endif
-    {
-        TIMER->load = ALARM_MICRO_SEC_TO_TIMER_TICK(UsRemainingTime);
+        {
+            TIMER->load = ALARM_MICRO_SEC_TO_TIMER_TICK(remaining);
 
-        TIMER->clear = 1;
-        TIMER->control.bit.int_enable = 1;
-        TIMER->control.bit.en = 1;
+            TIMER->clear = 1;
+            TIMER->control.bit.int_enable = 1;
+            TIMER->control.bit.en = 1;
+        }
     } else {
         OT_NOTIFY(OT_SYSTEM_EVENT_ALARM_US_EXPIRED);
     }
@@ -205,13 +209,14 @@ uint64_t otPlatTimeGet(void) {
 #if (OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE == 1)
     now32Time = otPlatAlarmMicroGetNow();
 #else
-    // now32Time = lmac15p4_rtc_time_read();
     now32Time = otPlatAlarmMilliGetNow();
 #endif
+    enter_critical_section();
     if (now32Time < prev32Time) {
         timerWraps += 1U;
     }
     prev32Time = now32Time;
+    leave_critical_section();
     now64Time = ((uint64_t)timerWraps << 32) + now32Time;
 
     return now64Time;
