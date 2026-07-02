@@ -72,9 +72,9 @@ void ot_alarmInit(void) {
     NVIC_DisableIRQ((IRQn_Type)(Timer3_IRQn));
     NVIC_SetPriority((IRQn_Type)(Timer3_IRQn), 2);
     #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
-    slowtimern_t* TIMER = SLOWTIMER0;
-    NVIC_DisableIRQ((IRQn_Type)(SlowTimer0_IRQn));
-    NVIC_SetPriority((IRQn_Type)(SlowTimer0_IRQn), 2);
+    slowtimern_t* TIMER = SLOWTIMER1;
+    NVIC_DisableIRQ((IRQn_Type)(SlowTimer1_IRQn));
+    NVIC_SetPriority((IRQn_Type)(SlowTimer1_IRQn), 2);
     #endif
 
     TIMER->load = 0;
@@ -89,8 +89,8 @@ void ot_alarmInit(void) {
     timer_callback_register(3, otPlatALarm_usTimerCallback);
     NVIC_EnableIRQ((IRQn_Type)Timer3_IRQn);
     #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
-    slowtimer_callback_register(0, otPlatALarm_usTimerCallback);
-    NVIC_EnableIRQ((IRQn_Type)SlowTimer0_IRQn);
+    slowtimer_callback_register(1, otPlatALarm_usTimerCallback);
+    NVIC_EnableIRQ((IRQn_Type)SlowTimer1_IRQn);
     #endif
 #endif
 }
@@ -162,7 +162,7 @@ void otPlatAlarmMicroStartAt(otInstance* aInstance, uint32_t aT0,
     #if defined(CONFIG_RT581) || defined(CONFIG_RT582) || defined(CONFIG_RT583)
     timern_t* TIMER = TIMER3;
     #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
-    slowtimern_t* TIMER = SLOWTIMER0;
+    slowtimern_t* TIMER = SLOWTIMER1;
     #endif
     uint32_t Curr_us = otPlatTimeGet();
     uint32_t fireTime = (aT0 + aDt);
@@ -193,7 +193,7 @@ void otPlatAlarmMicroStop(otInstance* aInstance) {
     #if defined(CONFIG_RT581) || defined(CONFIG_RT582) || defined(CONFIG_RT583)
     timern_t* TIMER = TIMER3;
     #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
-    slowtimern_t* TIMER = SLOWTIMER0;
+    slowtimern_t* TIMER = SLOWTIMER1;
     #endif
     TIMER->control.bit.en = 0;
     TIMER->control.bit.int_enable = 0;

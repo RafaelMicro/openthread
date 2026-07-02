@@ -230,8 +230,7 @@ otRadioCaps otPlatRadioGetCaps(otInstance* aInstance) {
                                 OT_RADIO_CAPS_TRANSMIT_TIMING   |
 #endif
 #endif
-                                OT_RADIO_CAPS_CSMA_BACKOFF |
-                                OT_RADIO_CAPS_RECEIVE_TIMING
+                                OT_RADIO_CAPS_CSMA_BACKOFF
                                );
     return capabilities;
 }
