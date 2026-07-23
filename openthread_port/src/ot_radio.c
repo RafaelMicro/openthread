@@ -63,7 +63,11 @@
 #define MAC_PIB_MAC_MAX_FRAME_TOTAL_WAIT_TIME 16416
 #define MAC_PIB_MAC_MAX_FRAME_RETRIES         4
 #define MAC_PIB_MAC_MAX_CSMACA_BACKOFFS       10
-#define MAC_PIB_MAC_MIN_BE                    5
+#define MAC_PIB_MAC_MIN_BE                    0
+
+#define TX_CONTROL_ACK_REQUEST_MASK          (1 << 0)
+#define TX_CONTROL_CSMACA_MASK               (1 << 1)
+#define TX_CONTROL_TX_FRAME_COUNTER_MASK     (1 << 2)
 
 
 #define MAC_RX_BUFFERS 100
@@ -852,7 +856,7 @@ otError otPlatRadioTransmit(otInstance *aInstance, otRadioFrame *aFrame)
 
     static uint32_t tx_timerWraps = 0U, tx_prev32Time = 0U;       
 
-    uint8_t tx_control = 0;
+    uint8_t tx_control = TX_CONTROL_CSMACA_MASK;
     uint8_t temp[OT_RADIO_FRAME_MAX_SIZE + 4];    
 
     otError error = OT_ERROR_INVALID_STATE;
@@ -876,14 +880,9 @@ otError otPlatRadioTransmit(otInstance *aInstance, otRadioFrame *aFrame)
     radioProcessTransmitSecurity(aFrame);
     if ((otRadio_var.pTxFrame->mPsdu[0] & IEEE802154_ACK_REQUEST))
     {
-        tx_control = 0x03;
+        tx_control |= TX_CONTROL_ACK_REQUEST_MASK;
     }
-    else
-    {
-        tx_control = 0x02;
-    }
-    
-    tx_control |= (1 << 2 );
+    tx_control |= TX_CONTROL_TX_FRAME_COUNTER_MASK;
     if (otMacFrameIsSecurityEnabled(aFrame))
     {
         uint32_t temp_fc = 0U;
@@ -899,13 +898,9 @@ otError otPlatRadioTransmit(otInstance *aInstance, otRadioFrame *aFrame)
     temp[3] = ((sMacFrameCounter >> 24) & 0xFF);
 
     memcpy(temp + 4, otRadio_var.pTxFrame->mPsdu, otRadio_var.pTxFrame->mLength);
-    if (otRadio_var.pTxFrame->mInfo.mTxInfo.mTxDelay != 0)
-    {
-        tx_control ^= (1 << 1);
-    }
     if (aFrame->mInfo.mTxInfo.mCsmaCaEnabled == false)
     {
-        tx_control ^= (1 << 1);
+        tx_control ^= TX_CONTROL_CSMACA_MASK;
     }
     if(lmac15p4_tx_data_send(0, temp,
                           otRadio_var.pTxFrame->mLength + 2,
@@ -915,7 +910,7 @@ otError otPlatRadioTransmit(otInstance *aInstance, otRadioFrame *aFrame)
         log_error("Tx failed !");
         OT_NOTIFY(OT_SYSTEM_EVENT_RADIO_TX_NO_ACK);
     }
-    
+
     otPlatRadioTxStarted(aInstance, aFrame);
     otRadio_var.tstx = otPlatTimeGet()+1;
     error = OT_ERROR_NONE;
