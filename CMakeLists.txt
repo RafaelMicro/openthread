@@ -212,6 +212,5 @@ elseif((${CONFIG_CHIP} STREQUAL "RT584H") OR (${CONFIG_CHIP} STREQUAL "RT584HA4"
     )
 endif()
 
-sdk_add_subdirectory_ifdef(CONFIG_BUILD_COMPONENT_OPENTHREAD_SUBG ${CMAKE_CURRENT_LIST_DIR}/openthread)
 sdk_add_subdirectory_ifdef(CONFIG_BUILD_COMPONENT_OPENTHREAD ${CMAKE_CURRENT_LIST_DIR}/openthread)
 sdk_add_subdirectory_ifdef(CONFIG_BUILD_COMPONENT_OPENTHREAD_PORT ${CMAKE_CURRENT_LIST_DIR}/openthread_port)
