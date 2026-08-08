@@ -7,11 +7,11 @@ sdk_add_include_directories(
 
 if((${CONFIG_CHIP} STREQUAL "RT584S") OR (${CONFIG_CHIP} STREQUAL "RT584H") OR (${CONFIG_CHIP} STREQUAL "RT584L"))
 sdk_add_include_directories(
-    ${CMAKE_SOURCE_DIR}/componenets/platform/hosal/hosal_rt584/Inc
+    ${CMAKE_SOURCE_DIR}/components/platform/hosal/hosal_rt584/Inc
 )
 elseif((${CONFIG_CHIP} STREQUAL "RT581") OR (${CONFIG_CHIP} STREQUAL "RT582") OR (${CONFIG_CHIP} STREQUAL "RT583"))
 sdk_add_include_directories(
-    ${CMAKE_SOURCE_DIR}/componenets/platform/hosal/hosal_rt582/Inc
+    ${CMAKE_SOURCE_DIR}/components/platform/hosal/hosal_rt582/Inc
 )
 endif()
 
