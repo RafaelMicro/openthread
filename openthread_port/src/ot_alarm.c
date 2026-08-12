@@ -11,6 +11,7 @@
 
 // #include "openthread-system.h"
 #include <assert.h>
+#include "openthread-core-config.h"
 #include <openthread/config.h>
 #include <openthread/link.h>
 #include <openthread/platform/alarm-micro.h>
