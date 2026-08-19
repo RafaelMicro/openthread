@@ -31,8 +31,8 @@
  *   This file includes definitions for IPv4 packet processing.
  */
 
-#ifndef IP4_TYPES_HPP_
-#define IP4_TYPES_HPP_
+#ifndef OT_CORE_NET_IP4_TYPES_HPP_
+#define OT_CORE_NET_IP4_TYPES_HPP_
 
 #include "openthread-core-config.h"
 
@@ -91,14 +91,16 @@ class Cidr;
 OT_TOOL_PACKED_BEGIN
 class Address : public otIp4Address, public Equatable<Address>, public Clearable<Address>
 {
+    friend class Cidr;
+
 public:
-    static constexpr uint16_t kSize              = 4;  ///< Size of an IPv4 Address (in bytes).
-    static constexpr uint16_t kAddressStringSize = 17; ///< String size used by `ToString()`.
+    static constexpr uint16_t kSize           = OT_IP4_ADDRESS_SIZE;        ///< Size of an IPv4 Address (in bytes).
+    static constexpr uint16_t kInfoStringSize = OT_IP4_ADDRESS_STRING_SIZE; ///< String size used by `ToString()`.
 
     /**
      * Defines the fixed-length `String` object returned from `ToString()`.
      */
-    typedef String<kAddressStringSize> InfoString;
+    typedef String<kInfoStringSize> InfoString;
 
     /**
      * Gets the IPv4 address as a pointer to a byte array.
@@ -108,12 +110,12 @@ public:
     const uint8_t *GetBytes(void) const { return mFields.m8; }
 
     /**
-     * Sets the IPv4 address from a given byte array.
+     * Initializes the IPv4 address from a given byte array.
      *
      * @param[in] aBuffer    Pointer to an array containing the IPv4 address. `kSize` bytes from the buffer
      *                       are copied to form the IPv4 address.
      */
-    void SetBytes(const uint8_t *aBuffer) { memcpy(mFields.m8, aBuffer, kSize); }
+    void InitFrom(const uint8_t *aBuffer) { memcpy(mFields.m8, aBuffer, kSize); }
 
     /**
      * Sets the IPv4 address from a given IPv4-mapped IPv6 address.
@@ -187,17 +189,17 @@ private:
 /**
  * Represents an IPv4 CIDR block.
  */
-class Cidr : public otIp4Cidr, public Unequatable<Cidr>, public Clearable<Address>
+class Cidr : public otIp4Cidr, public Unequatable<Cidr>, public Clearable<Cidr>
 {
     friend class Address;
 
 public:
-    static constexpr uint16_t kCidrSuffixSize = 3; ///< Suffix to represent CIDR (/dd).
+    static constexpr uint16_t kInfoStringSize = OT_IP4_CIDR_STRING_SIZE; ///< String size used by `ToString()`.
 
     /**
      * Defines the fixed-length `String` object returned from `ToString()`.
      */
-    typedef String<Address::kAddressStringSize + kCidrSuffixSize> InfoString;
+    typedef String<kInfoStringSize> InfoString;
 
     /**
      * Converts the IPv4 CIDR string to binary.
@@ -235,6 +237,13 @@ public:
      * @returns An `InfoString` representing the IPv4 cidr.
      */
     InfoString ToString(void) const;
+
+    /**
+     * Gets the CIDR length (in bits).
+     *
+     * @returns The CIDR length.
+     */
+    uint8_t GetLength(void) const { return mLength; }
 
     /**
      * Gets the prefix as a pointer to a byte array.
@@ -281,24 +290,30 @@ OT_TOOL_PACKED_BEGIN
 class Header : public Clearable<Header>
 {
 public:
-    static constexpr uint8_t kVersionIhlOffset         = 0;
-    static constexpr uint8_t kTrafficClassOffset       = 1;
-    static constexpr uint8_t kTotalLengthOffset        = 2;
-    static constexpr uint8_t kIdentificationOffset     = 4;
-    static constexpr uint8_t kFlagsFragmentOffset      = 6;
-    static constexpr uint8_t kTtlOffset                = 8;
-    static constexpr uint8_t kProtocolOffset           = 9;
-    static constexpr uint8_t kHeaderChecksumOffset     = 10;
-    static constexpr uint8_t kSourceAddressOffset      = 12;
-    static constexpr uint8_t kDestinationAddressOffset = 16;
-
     /**
      * Indicates whether or not the header appears to be well-formed.
      *
      * @retval TRUE    If the header appears to be well-formed.
      * @retval FALSE   If the header does not appear to be well-formed.
      */
-    bool IsValid(void) const { return IsVersion4(); }
+    bool IsValid(void) const
+    {
+        return IsVersion4() && (GetIhl() >= kMinIhl) && (GetHeaderLength() <= GetTotalLength());
+    }
+
+    /**
+     * Returns the IPv4 Internet Header Length (IHL) value.
+     *
+     * @returns The IPv4 IHL value.
+     */
+    uint8_t GetIhl(void) const { return mVersIhl & kIhlMask; }
+
+    /**
+     * Returns the IPv4 Header Length value.
+     *
+     * @returns The IPv4 Header Length value.
+     */
+    uint16_t GetHeaderLength(void) const { return static_cast<uint16_t>(GetIhl()) * 4; }
 
     /**
      * Initializes the Version to 4 and sets Traffic Class and Flow fields to zero.
@@ -518,6 +533,7 @@ private:
     static constexpr uint8_t  kVersion4           = 0x40;   // Use with `mVersIhl`
     static constexpr uint8_t  kVersionMask        = 0xf0;   // Use with `mVersIhl`
     static constexpr uint8_t  kIhlMask            = 0x0f;   // Use with `mVersIhl`
+    static constexpr uint8_t  kMinIhl             = 5;      ///< Minimum IPv4 Internet Header Length (in 32-bit words).
     static constexpr uint8_t  kDscpOffset         = 2;      // Use with `mDscpEcn`
     static constexpr uint16_t kDscpMask           = 0xfc;   // Use with `mDscpEcn`
     static constexpr uint8_t  kEcnOffset          = 0;      // Use with `mDscpEcn`
@@ -526,7 +542,13 @@ private:
     static constexpr uint16_t kFlagsDf            = 0x4000; // Use with `mFlagsFragmentOffset`
     static constexpr uint16_t kFlagsMf            = 0x2000; // Use with `mFlagsFragmentOffset`
     static constexpr uint16_t kFragmentOffsetMask = 0x1fff; // Use with `mFlagsFragmentOffset`
-    static constexpr uint32_t kVersIhlInit        = 0x45;   // Version 4, Header length = 5x8 bytes.
+    static constexpr uint32_t kVersIhlInit        = 0x45;   // Version 4, Header length = 5x4 bytes.
+    static constexpr uint8_t  kOptionEnd          = 0;      ///< End of Options List
+    static constexpr uint8_t  kOptionNop          = 1;      ///< No Operation
+    static constexpr uint8_t  kOptionLsrr         = 131;    ///< Loose Source and Record Route
+    static constexpr uint8_t  kOptionSsrr         = 137;    ///< Strict Source and Record Route
+
+    bool HasSourceRouteOption(const Message &aMessage) const;
 
     uint8_t  mVersIhl;
     uint8_t  mDscpEcn;
@@ -541,135 +563,135 @@ private:
 } OT_TOOL_PACKED_END;
 
 /**
- * Implements ICMP(v4).
- * Note: ICMP(v4) messages will only be generated / handled by NAT64. So only header definition is required.
+ * Represents an ICMPv4 header.
  */
-class Icmp
+OT_TOOL_PACKED_BEGIN
+class Icmp4Header : public Clearable<Icmp4Header>
 {
 public:
+    static constexpr uint16_t kChecksumFieldOffset = 2; ///< The byte offset of the Checksum field in the ICMPv4 header.
+
     /**
-     * Represents an IPv4 ICMP header.
+     * ICMPv4 message types.
+     *
+     * Only the ICMPv4 types used with NAT64 are listed here.
      */
-    OT_TOOL_PACKED_BEGIN
-    class Header : public Clearable<Header>
+    enum Type : uint8_t
     {
-    public:
-        static constexpr uint16_t kChecksumFieldOffset = 2;
-        // A few ICMP types, only the ICMP types work with NAT64 are listed here.
-        enum Type : uint8_t
-        {
-            kTypeEchoReply              = 0,
-            kTypeDestinationUnreachable = 3,
-            kTypeEchoRequest            = 8,
-            kTypeTimeExceeded           = 11,
-        };
+        kTypeEchoReply              = 0,  ///< Echo Reply.
+        kTypeDestinationUnreachable = 3,  ///< Destination Unreachable.
+        kTypeEchoRequest            = 8,  ///< Echo Request.
+        kTypeTimeExceeded           = 11, ///< Time Exceeded.
+    };
 
-        enum Code : uint8_t
-        {
-            kCodeNone = 0,
-            // Destination Unreachable codes
-            kCodeNetworkUnreachable  = 0,
-            kCodeHostUnreachable     = 1,
-            kCodeProtocolUnreachable = 2,
-            kCodePortUnreachable     = 3,
-            kCodeSourceRouteFailed   = 5,
-            kCodeNetworkUnknown      = 6,
-            kCodeHostUnknown         = 7,
-        };
+    /**
+     * ICMPv4 message codes.
+     */
+    enum Code : uint8_t
+    {
+        kCodeNone = 0, ///< None.
 
-        /**
-         * Returns the type of the ICMP message.
-         *
-         * @returns The type field of the ICMP message.
-         */
-        uint8_t GetType(void) const { return mType; }
+        kCodeNetworkUnreachable  = 0, ///< Network Unreachable.
+        kCodeHostUnreachable     = 1, ///< Host Unreachable.
+        kCodeProtocolUnreachable = 2, ///< Protocol Unreachable.
+        kCodePortUnreachable     = 3, ///< Port Unreachable.
+        kCodeSourceRouteFailed   = 5, ///< Source Route Failed.
+        kCodeNetworkUnknown      = 6, ///< Network Unknown.
+        kCodeHostUnknown         = 7, ///< Host Unknown.
+    };
 
-        /**
-         * Sets the type of the ICMP message.
-         *
-         * @param[in] aType The type of the ICMP message.
-         */
-        void SetType(uint8_t aType) { mType = aType; }
+    /**
+     * Returns the ICMPv4 message type.
+     *
+     * @returns The ICMPv4 message type.
+     */
+    uint8_t GetType(void) const { return mType; }
 
-        /**
-         * Returns the code of the ICMP message.
-         *
-         * @returns The code field of the ICMP message.
-         */
-        uint8_t GetCode(void) const { return mCode; }
+    /**
+     * Sets the ICMPv4 message type.
+     *
+     * @param[in] aType  The ICMPv4 message type.
+     */
+    void SetType(uint8_t aType) { mType = aType; }
 
-        /**
-         * Sets the code of the ICMP message.
-         *
-         * @param[in] aCode The code of the ICMP message.
-         */
-        void SetCode(uint8_t aCode) { mCode = aCode; }
+    /**
+     * Returns the ICMPv4 message code.
+     *
+     * @returns The ICMPv4 message code.
+     */
+    uint8_t GetCode(void) const { return mCode; }
 
-        /**
-         * Sets the checksum field in the ICMP message.
-         *
-         * @returns The checksum of the ICMP message.
-         */
-        uint16_t GetChecksum(void) const { return BigEndian::HostSwap16(mChecksum); }
+    /**
+     * Sets the ICMPv4 message code.
+     *
+     * @param[in] aCode  The ICMPv4 message code.
+     */
+    void SetCode(uint8_t aCode) { mCode = aCode; }
 
-        /**
-         * Sets the checksum field in the ICMP message.
-         *
-         * @param[in] aChecksum The checksum of the ICMP message.
-         */
-        void SetChecksum(uint16_t aChecksum) { mChecksum = BigEndian::HostSwap16(aChecksum); }
+    /**
+     * Returns the ICMPv4 message checksum.
+     *
+     * @returns The ICMPv4 message checksum.
+     */
+    uint16_t GetChecksum(void) const { return BigEndian::HostSwap16(mChecksum); }
 
-        /**
-         * Returns the ICMPv4 message ID for Echo Requests and Replies.
-         *
-         * @returns The ICMPv4 message ID.
-         */
-        uint16_t GetId(void) const { return BigEndian::HostSwap16(mData.m16[0]); }
+    /**
+     * Sets the ICMPv4 message checksum.
+     *
+     * @param[in] aChecksum  The ICMPv4 message checksum.
+     */
+    void SetChecksum(uint16_t aChecksum) { mChecksum = BigEndian::HostSwap16(aChecksum); }
 
-        /**
-         * Sets the ICMPv4 message ID for Echo Requests and Replies.
-         *
-         * @param[in]  aId  The ICMPv4 message ID.
-         */
-        void SetId(uint16_t aId) { mData.m16[0] = BigEndian::HostSwap16(aId); }
+    /**
+     * Returns the ICMPv4 message ID for Echo Requests and Replies.
+     *
+     * @returns The ICMPv4 message ID.
+     */
+    uint16_t GetId(void) const { return BigEndian::HostSwap16(mData.m16[0]); }
 
-        /**
-         * Returns the rest of header field in the ICMP message.
-         *
-         * @returns The rest of header field in the ICMP message. The returned buffer has 4 octets.
-         */
-        const uint8_t *GetRestOfHeader(void) const { return mData.m8; }
+    /**
+     * Sets the ICMPv4 message ID for Echo Requests and Replies.
+     *
+     * @param[in]  aId  The ICMPv4 message ID.
+     */
+    void SetId(uint16_t aId) { mData.m16[0] = BigEndian::HostSwap16(aId); }
 
-        /**
-         * Sets the rest of header field in the ICMP message.
-         *
-         * @param[in] aRestOfHeader The rest of header field in the ICMP message. The buffer should have 4 octets.
-         */
-        void SetRestOfHeader(const uint8_t *aRestOfHeader) { memcpy(mData.m8, aRestOfHeader, sizeof(mData)); }
+    /**
+     * Returns the "Rest of Header" field in the ICMPv4 message.
+     *
+     * @returns The "Rest of Header" field in the ICMPv4 message. The returned buffer has 4 octets.
+     */
+    const uint8_t *GetRestOfHeader(void) const { return mData.m8; }
 
-    private:
-        uint8_t  mType;
-        uint8_t  mCode;
-        uint16_t mChecksum;
-        union OT_TOOL_PACKED_FIELD
-        {
-            uint8_t  m8[4];
-            uint16_t m16[2];
-            uint32_t m32[1];
-        } mData;
-    } OT_TOOL_PACKED_END;
-};
+    /**
+     * Sets the "Rest of Header" field in the ICMPv4 message.
+     *
+     * @param[in] aRestOfHeader  The "Rest of Header" field in the ICMPv4 message. The buffer should have 4 octets.
+     */
+    void SetRestOfHeader(const uint8_t *aRestOfHeader) { memcpy(mData.m8, aRestOfHeader, sizeof(mData)); }
+
+private:
+    uint8_t  mType;
+    uint8_t  mCode;
+    uint16_t mChecksum;
+    union OT_TOOL_PACKED_FIELD
+    {
+        uint8_t  m8[4];
+        uint16_t m16[2];
+        uint32_t m32[1];
+    } mData;
+} OT_TOOL_PACKED_END;
 
 // Internet Protocol Numbers
 static constexpr uint8_t kProtoTcp  = Ip6::kProtoTcp; ///< Transmission Control Protocol
 static constexpr uint8_t kProtoUdp  = Ip6::kProtoUdp; ///< User Datagram
 static constexpr uint8_t kProtoIcmp = 1;              ///< ICMP for IPv4
 
-using Tcp = Ip6::Tcp; // TCP in IPv4 is the same as TCP in IPv6
-using Udp = Ip6::Udp; // UDP in IPv4 is the same as UDP in IPv6
+using TcpHeader = Ip6::TcpHeader; ///< TCP header (the same as in IPv6)
+using UdpHeader = Ip6::UdpHeader; ///< UDP header (the same as in IPv6)
 
 /**
- * Represents parsed IPv4 header along with UDP/TCP/ICMP4 headers from a received message/frame.
+ * Represents parsed IPv4 header along with UDP/TCP/ICMPv4 headers from a received message/frame.
  */
 class Headers : private Clearable<Headers>
 {
@@ -705,7 +727,7 @@ public:
      *
      * @returns The IPv4 header Total length value.
      */
-    uint8_t GetIpLength(void) const { return mIp4Header.GetTotalLength(); }
+    uint16_t GetIpLength(void) const { return mIp4Header.GetTotalLength(); }
 
     /**
      * Returns the IPv4 TTL value.
@@ -759,7 +781,7 @@ public:
      *
      * @returns The UDP header.
      */
-    const Udp::Header &GetUdpHeader(void) const { return mHeader.mUdp; }
+    const UdpHeader &GetUdpHeader(void) const { return mHeader.mUdp; }
 
     /**
      * Returns the TCP header.
@@ -768,7 +790,7 @@ public:
      *
      * @returns The TCP header.
      */
-    const Tcp::Header &GetTcpHeader(void) const { return mHeader.mTcp; }
+    const TcpHeader &GetTcpHeader(void) const { return mHeader.mTcp; }
 
     /**
      * Returns the ICMPv4 header.
@@ -777,7 +799,7 @@ public:
      *
      * @returns The ICMPv4 header.
      */
-    const Icmp::Header &GetIcmpHeader(void) const { return mHeader.mIcmp; }
+    const Icmp4Header &GetIcmpHeader(void) const { return mHeader.mIcmp; }
 
     /**
      * Returns the source port number if the header is UDP or TCP, or zero otherwise
@@ -811,9 +833,9 @@ private:
     Header mIp4Header;
     union
     {
-        Udp::Header  mUdp;
-        Tcp::Header  mTcp;
-        Icmp::Header mIcmp;
+        UdpHeader   mUdp;
+        TcpHeader   mTcp;
+        Icmp4Header mIcmp;
     } mHeader;
 };
 
@@ -828,4 +850,4 @@ DefineCoreType(otIp4Cidr, Ip4::Cidr);
 
 } // namespace ot
 
-#endif // IP4_TYPES_HPP_
+#endif // OT_CORE_NET_IP4_TYPES_HPP_

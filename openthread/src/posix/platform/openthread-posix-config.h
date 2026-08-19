@@ -26,8 +26,8 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef OPENTHREAD_PLATFORM_POSIX_CONFIG_H_
-#define OPENTHREAD_PLATFORM_POSIX_CONFIG_H_
+#ifndef OT_POSIX_PLATFORM_OPENTHREAD_POSIX_CONFIG_H_
+#define OT_POSIX_PLATFORM_OPENTHREAD_POSIX_CONFIG_H_
 
 #include "openthread-core-config.h"
 
@@ -40,6 +40,17 @@
  * @brief
  *   This file includes the POSIX platform-specific configurations.
  */
+
+/**
+ * @def PACKAGE_VERSION
+ *
+ * The version string reported by `ot-ctl --version`. The OpenThread build
+ * systems define it; this fallback keeps the client compiling in custom
+ * build environments that do not.
+ */
+#ifndef PACKAGE_VERSION
+#define PACKAGE_VERSION "unknown"
+#endif
 
 /**
  * @def OPENTHREAD_POSIX_CONFIG_RCP_PTY_ENABLE
@@ -454,6 +465,36 @@
 #define OPENTHREAD_POSIX_CONFIG_RESOLV_CONF_ENABLED_INIT (!OPENTHREAD_POSIX_CONFIG_ANDROID_ENABLE)
 #endif
 
+/**
+ * @def OPENTHREAD_POSIX_CONFIG_MDNS_ADDR_MONITOR
+ *
+ * Specifies the behavior of `MdnsSocket` and how it implements monitoring and reporting of infra-interface IPv4 and
+ * IPv6 addresses.
+ *
+ * The valid values for this config, `OPENTHREAD_POSIX_CONFIG_MDNS_ADDR_MONITOR_*`, are defined in
+ *  `posix/platform/mdns_socket.h`.
+ */
+#ifndef OPENTHREAD_POSIX_CONFIG_MDNS_ADDR_MONITOR
+#ifdef __linux__
+#define OPENTHREAD_POSIX_CONFIG_MDNS_ADDR_MONITOR OT_POSIX_MDNS_ADDR_MONITOR_NETLINK
+#else
+#define OPENTHREAD_POSIX_CONFIG_MDNS_ADDR_MONITOR OT_POSIX_MDNS_ADDR_MONITOR_PERIODIC
+#endif
+#endif
+
+/**
+ * @def OPENTHREAD_POSIX_CONFIG_MDNS_ADDR_MONITOR_PERIOD
+ *
+ * Specifies the duration in milliseconds (ms) for the periodic check used by the `MdnsSocket` implementation to
+ * monitor and report the infra-interface IPv4 and IPv6 addresses.
+ *
+ * This is applicable only when `OPENTHREAD_POSIX_CONFIG_MDNS_ADDR_MONITOR` is set to
+ * `OPENTHREAD_POSIX_CONFIG_MDNS_ADDR_MONITOR_PERIODIC`.
+ */
+#ifndef OPENTHREAD_POSIX_CONFIG_MDNS_ADDR_MONITOR_PERIOD
+#define OPENTHREAD_POSIX_CONFIG_MDNS_ADDR_MONITOR_PERIOD (5000)
+#endif
+
 //---------------------------------------------------------------------------------------------------------------------
 // Removed or renamed POSIX specific configs.
 
@@ -465,4 +506,4 @@
 #error "OPENTHREAD_CONFIG_POSIX_TREL_USE_NETLINK_SOCKET was removed (no longer applicable with TREL over DNS-SD)."
 #endif
 
-#endif // OPENTHREAD_PLATFORM_POSIX_CONFIG_H_
+#endif // OT_POSIX_PLATFORM_OPENTHREAD_POSIX_CONFIG_H_

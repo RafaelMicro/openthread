@@ -29,26 +29,47 @@
 #include "mac_frame.h"
 
 #include <assert.h>
+
+#include <openthread/platform/radio.h>
+
+#include "common/code_utils.hpp"
 #include "mac/mac_frame.hpp"
 
 using namespace ot;
+
+static bool otMacFrameDoesAddrMatchAny(const otRadioFrame *aFrame,
+                                       otPanId             aPanId,
+                                       otShortAddress      aShortAddress,
+                                       otShortAddress      aAltShortAddress,
+                                       const otExtAddress *aExtAddress);
 
 bool otMacFrameDoesAddrMatch(const otRadioFrame *aFrame,
                              otPanId             aPanId,
                              otShortAddress      aShortAddress,
                              const otExtAddress *aExtAddress)
 {
+    return otMacFrameDoesAddrMatchAny(aFrame, aPanId, aShortAddress, Mac::kShortAddrInvalid, aExtAddress);
+}
+
+static bool otMacFrameDoesAddrMatchAny(const otRadioFrame *aFrame,
+                                       otPanId             aPanId,
+                                otShortAddress      aShortAddress,
+                                otShortAddress      aAltShortAddress,
+                                const otExtAddress *aExtAddress)
+{
     const Mac::Frame &frame = *static_cast<const Mac::Frame *>(aFrame);
     bool              rval  = true;
     Mac::Address      dst;
     Mac::PanId        panid;
 
-    SuccessOrExit(frame.GetDstAddr(dst));
+    VerifyOrExit(frame.GetDstAddr(dst) == kErrorNone, rval = false);
 
     switch (dst.GetType())
     {
     case Mac::Address::kTypeShort:
-        VerifyOrExit(dst.GetShort() == Mac::kShortAddrBroadcast || dst.GetShort() == aShortAddress, rval = false);
+        VerifyOrExit(dst.GetShort() == Mac::kShortAddrBroadcast || dst.GetShort() == aShortAddress ||
+                         (aAltShortAddress != Mac::kShortAddrInvalid && dst.GetShort() == aAltShortAddress),
+                     rval = false);
         break;
 
     case Mac::Address::kTypeExtended:
@@ -164,9 +185,9 @@ void otMacFrameGenerateImmAck(const otRadioFrame *aFrame, bool aIsFramePending, 
 #if OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2
 otError otMacFrameGenerateEnhAck(const otRadioFrame *aFrame,
                                  bool                aIsFramePending,
-                                 const uint8_t *     aIeData,
+                                 const uint8_t      *aIeData,
                                  uint8_t             aIeLength,
-                                 otRadioFrame *      aAckFrame)
+                                 otRadioFrame       *aAckFrame)
 {
     assert(aFrame != nullptr && aAckFrame != nullptr);
 
@@ -178,7 +199,7 @@ otError otMacFrameGenerateEnhAck(const otRadioFrame *aFrame,
 #if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
 void otMacFrameSetCslIe(otRadioFrame *aFrame, uint16_t aCslPeriod, uint16_t aCslPhase)
 {
-    static_cast<Mac::Frame *>(aFrame)->SetCslIe(aCslPeriod, aCslPhase);
+    static_cast<Mac::Frame *>(aFrame)->UpdateCslIe(aCslPeriod, aCslPhase);
 }
 #endif // OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
 
@@ -189,26 +210,26 @@ bool otMacFrameIsSecurityEnabled(otRadioFrame *aFrame)
 
 bool otMacFrameIsKeyIdMode1(otRadioFrame *aFrame)
 {
-    uint8_t keyIdMode;
-    otError error;
+    return static_cast<const Mac::Frame *>(aFrame)->HasKeyIdMode(Mac::Frame::kKeyIdMode1);
+}
 
-    error = static_cast<const Mac::Frame *>(aFrame)->GetKeyIdMode(keyIdMode);
-
-    return (error == OT_ERROR_NONE) ? (keyIdMode == Mac::Frame::kKeyIdMode1) : false;
+bool otMacFrameIsKeyIdMode2(otRadioFrame *aFrame)
+{
+    return static_cast<const Mac::Frame *>(aFrame)->HasKeyIdMode(Mac::Frame::kKeyIdMode2);
 }
 
 uint8_t otMacFrameGetKeyId(otRadioFrame *aFrame)
 {
-    uint8_t keyId = 0;
+    uint8_t keyIndex = 0;
 
-    IgnoreError(static_cast<const Mac::Frame *>(aFrame)->GetKeyId(keyId));
+    IgnoreError(static_cast<const Mac::Frame *>(aFrame)->GetKeyIndex(keyIndex));
 
-    return keyId;
+    return keyIndex;
 }
 
 void otMacFrameSetKeyId(otRadioFrame *aFrame, uint8_t aKeyId)
 {
-    static_cast<Mac::Frame *>(aFrame)->SetKeyId(aKeyId);
+    static_cast<Mac::Frame *>(aFrame)->SetKeyIndex(aKeyId);
 }
 
 uint32_t otMacFrameGetFrameCounter(otRadioFrame *aFrame)
@@ -230,41 +251,33 @@ uint8_t otMacFrameGenerateCslIeTemplate(uint8_t *aDest)
 {
     assert(aDest != nullptr);
 
-    reinterpret_cast<Mac::HeaderIe *>(aDest)->SetId(Mac::CslIe::kHeaderIeId);
-    reinterpret_cast<Mac::HeaderIe *>(aDest)->SetLength(sizeof(Mac::CslIe));
+    reinterpret_cast<Mac::CslIe *>(aDest)->Init();
 
-    return sizeof(Mac::HeaderIe) + sizeof(Mac::CslIe);
+    return sizeof(Mac::CslIe);
 }
 #endif
 
 #if OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE
 uint8_t otMacFrameGenerateEnhAckProbingIe(uint8_t *aDest, const uint8_t *aIeData, uint8_t aIeDataLength)
 {
-    uint8_t len = sizeof(Mac::VendorIeHeader) + aIeDataLength;
+    Mac::LinkMetricsProbingIe *probingIe = reinterpret_cast<Mac::LinkMetricsProbingIe *>(aDest);
 
     assert(aDest != nullptr);
 
-    reinterpret_cast<Mac::HeaderIe *>(aDest)->SetId(Mac::ThreadIe::kHeaderIeId);
-    reinterpret_cast<Mac::HeaderIe *>(aDest)->SetLength(len);
-
-    aDest += sizeof(Mac::HeaderIe);
-
-    reinterpret_cast<Mac::VendorIeHeader *>(aDest)->SetVendorOui(Mac::ThreadIe::kVendorOuiThreadCompanyId);
-    reinterpret_cast<Mac::VendorIeHeader *>(aDest)->SetSubType(Mac::ThreadIe::kEnhAckProbingIe);
+    probingIe->Init(aIeDataLength);
 
     if (aIeData != nullptr)
     {
-        aDest += sizeof(Mac::VendorIeHeader);
-        memcpy(aDest, aIeData, aIeDataLength);
+        probingIe->WriteMetricsDataFrom(aIeData);
     }
 
-    return sizeof(Mac::HeaderIe) + len;
+    return probingIe->GetSize();
 }
 
 void otMacFrameSetEnhAckProbingIe(otRadioFrame *aFrame, const uint8_t *aData, uint8_t aDataLen)
 {
     assert(aFrame != nullptr && aData != nullptr);
 
-    reinterpret_cast<Mac::Frame *>(aFrame)->SetEnhAckProbingIe(aData, aDataLen);
+    reinterpret_cast<Mac::Frame *>(aFrame)->UpdateEnhAckProbingIe(aData, aDataLen);
 }
 #endif // OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE

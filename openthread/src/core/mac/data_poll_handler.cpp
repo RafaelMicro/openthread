@@ -89,7 +89,8 @@ void DataPollHandler::HandleDataPoll(Mac::RxFrame &aFrame)
     Child       *child;
     uint16_t     indirectMsgCount;
 
-    VerifyOrExit(aFrame.GetSecurityEnabled());
+    VerifyOrExit(aFrame.IsSecuredWith(Mac::RxFrame::kAllowKeyIdMode1));
+
     VerifyOrExit(!Get<Mle::Mle>().IsDetached());
 
     SuccessOrExit(aFrame.GetSrcAddr(macSource));
@@ -162,7 +163,7 @@ Mac::TxFrame *DataPollHandler::HandleFrameRequest(Mac::TxFrames &aTxFrames)
         if (frame->GetSecurityEnabled())
         {
             frame->SetFrameCounter(mIndirectTxChild->GetIndirectFrameCounter());
-            frame->SetKeyId(mIndirectTxChild->GetIndirectKeyId());
+            frame->SetKeyIndex(mIndirectTxChild->GetIndirectKeyIndex());
         }
     }
     else
@@ -236,13 +237,13 @@ void DataPollHandler::HandleSentFrame(const Mac::TxFrame &aFrame, Error aError, 
             if (aFrame.GetSecurityEnabled() && aFrame.IsHeaderUpdated())
             {
                 uint32_t frameCounter;
-                uint8_t  keyId;
+                uint8_t  keyIndex;
 
                 SuccessOrAssert(aFrame.GetFrameCounter(frameCounter));
                 aChild.SetIndirectFrameCounter(frameCounter);
 
-                SuccessOrAssert(aFrame.GetKeyId(keyId));
-                aChild.SetIndirectKeyId(keyId);
+                SuccessOrAssert(aFrame.GetKeyIndex(keyIndex));
+                aChild.SetIndirectKeyIndex(keyIndex);
             }
 
             ExitNow();

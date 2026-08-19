@@ -31,8 +31,8 @@
  *   This file includes definitions for data poll (mac data request command) sender.
  */
 
-#ifndef DATA_POLL_MANAGER_HPP_
-#define DATA_POLL_MANAGER_HPP_
+#ifndef OT_CORE_MAC_DATA_POLL_SENDER_HPP_
+#define OT_CORE_MAC_DATA_POLL_SENDER_HPP_
 
 #include "openthread-core-config.h"
 
@@ -259,7 +259,7 @@ private:
     const Neighbor &GetParent(void) const;
     void            HandlePollTimer(void) { IgnoreError(SendDataPoll()); }
 #if OPENTHREAD_CONFIG_MULTI_RADIO
-    Error GetPollDestinationAddress(Mac::Address &aDest, Mac::RadioType &aRadioType) const;
+    Error GetPollDestinationAddress(Mac::Address &aDest, Radio::Type &aRadioType) const;
 #else
     Error GetPollDestinationAddress(Mac::Address &aDest) const;
 #endif
@@ -287,4 +287,4 @@ private:
 
 } // namespace ot
 
-#endif // DATA_POLL_MANAGER_HPP_
+#endif // OT_CORE_MAC_DATA_POLL_SENDER_HPP_

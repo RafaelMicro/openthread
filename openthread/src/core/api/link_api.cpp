@@ -142,7 +142,7 @@ exit:
 
 void otLinkGetFactoryAssignedIeeeEui64(otInstance *aInstance, otExtAddress *aEui64)
 {
-    AsCoreType(aInstance).Get<Radio>().GetIeeeEui64(AsCoreType(aEui64));
+    AsCoreType(aInstance).Get<Radio::Radio>().GetIeeeEui64(AsCoreType(aEui64));
 }
 
 otPanId otLinkGetPanId(otInstance *aInstance) { return AsCoreType(aInstance).Get<Mac::Mac>().GetPanId(); }
@@ -307,24 +307,24 @@ int8_t otLinkConvertLinkQualityToRss(otInstance *aInstance, uint8_t aLinkQuality
 }
 
 #if OPENTHREAD_CONFIG_MAC_RETRY_SUCCESS_HISTOGRAM_ENABLE
-const uint32_t *otLinkGetTxDirectRetrySuccessHistogram(otInstance *aInstance, uint8_t *aNumberOfEntries)
+const uint32_t *otLinkGetTxDirectRetrySuccessHistogram(otInstance *aInstance, uint16_t *aSize)
 {
-    AssertPointerIsNotNull(aNumberOfEntries);
+    AssertPointerIsNotNull(aSize);
 
-    return AsCoreType(aInstance).Get<Mac::Mac>().GetDirectRetrySuccessHistogram(*aNumberOfEntries);
+    return AsCoreType(aInstance).Get<Mac::Mac>().GetDirectRetrySuccessHistogram(*aSize);
 }
 
-const uint32_t *otLinkGetTxIndirectRetrySuccessHistogram(otInstance *aInstance, uint8_t *aNumberOfEntries)
+const uint32_t *otLinkGetTxIndirectRetrySuccessHistogram(otInstance *aInstance, uint16_t *aSize)
 {
     const uint32_t *histogram = nullptr;
 
-    AssertPointerIsNotNull(aNumberOfEntries);
+    AssertPointerIsNotNull(aSize);
 
 #if OPENTHREAD_FTD
-    histogram = AsCoreType(aInstance).Get<Mac::Mac>().GetIndirectRetrySuccessHistogram(*aNumberOfEntries);
+    histogram = AsCoreType(aInstance).Get<Mac::Mac>().GetIndirectRetrySuccessHistogram(*aSize);
 #else
     OT_UNUSED_VARIABLE(aInstance);
-    *aNumberOfEntries = 0;
+    *aSize = 0;
 #endif
 
     return histogram;
@@ -453,9 +453,9 @@ otError otLinkSetCslPeriod(otInstance *aInstance, uint32_t aPeriod)
     }
     else
     {
-        VerifyOrExit((aPeriod % kUsPerTenSymbols) == 0, error = kErrorInvalidArgs);
-        periodInTenSymbolsUnit = ClampToUint16(aPeriod / kUsPerTenSymbols);
-        VerifyOrExit(periodInTenSymbolsUnit >= kMinCslPeriod, error = kErrorInvalidArgs);
+        VerifyOrExit((aPeriod % Radio::kUsPerTenSymbols) == 0, error = kErrorInvalidArgs);
+        periodInTenSymbolsUnit = ClampToUint16(aPeriod / Radio::kUsPerTenSymbols);
+        VerifyOrExit(periodInTenSymbolsUnit >= Radio::kMinCslPeriod, error = kErrorInvalidArgs);
     }
 
     AsCoreType(aInstance).Get<Mac::Mac>().SetCslPeriod(periodInTenSymbolsUnit);
@@ -470,7 +470,7 @@ otError otLinkSetCslTimeout(otInstance *aInstance, uint32_t aTimeout)
 {
     Error error = kErrorNone;
 
-    VerifyOrExit(kMaxCslTimeout >= aTimeout, error = kErrorInvalidArgs);
+    VerifyOrExit(Radio::kMaxCslTimeout >= aTimeout, error = kErrorInvalidArgs);
     AsCoreType(aInstance).Get<Mle::Mle>().SetCslTimeout(aTimeout);
 
 exit:

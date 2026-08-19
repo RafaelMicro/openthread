@@ -61,8 +61,8 @@ Link::Link(Instance &aInstance)
     mTxFrame.SetLength(0);
 
 #if OPENTHREAD_CONFIG_MULTI_RADIO
-    mTxFrame.SetRadioType(Mac::kRadioTypeTrel);
-    mRxFrame.SetRadioType(Mac::kRadioTypeTrel);
+    mTxFrame.SetRadioType(Radio::kTypeTrel);
+    mRxFrame.SetRadioType(Radio::kTypeTrel);
 #endif
 
     mTimer.Start(kAckWaitWindow);
@@ -72,7 +72,7 @@ void Link::AfterInit(void) { mInterface.Init(); }
 
 void Link::Enable(void)
 {
-    mInterface.Enable();
+    mInterface.SetEnabled(true, Interface::kRequesterStack);
 
     if (mState == kStateDisabled)
     {
@@ -82,7 +82,7 @@ void Link::Enable(void)
 
 void Link::Disable(void)
 {
-    mInterface.Disable();
+    mInterface.SetEnabled(false, Interface::kRequesterStack);
 
     if (mState != kStateDisabled)
     {
@@ -172,10 +172,7 @@ void Link::BeginTransmit(void)
         }
         else
         {
-            uint8_t keyIdMode;
-
-            IgnoreError(mTxFrame.GetKeyIdMode(keyIdMode));
-            isDiscovery = (keyIdMode == Mac::Frame::kKeyIdMode2);
+            isDiscovery = mTxFrame.HasKeyIdMode(Mac::Frame::kKeyIdMode2);
         }
     }
 
@@ -229,7 +226,7 @@ void Link::BeginTransmit(void)
         mRxFrame.mLength  = k154AckFrameSize;
         mRxFrame.mChannel = mTxFrame.GetChannel();
 #if OPENTHREAD_CONFIG_MULTI_RADIO
-        mRxFrame.mRadioType = Mac::kRadioTypeTrel;
+        mRxFrame.mRadioType = Radio::kTypeTrel;
 #endif
         mRxFrame.mInfo.mRxInfo.mTimestamp             = 0;
         mRxFrame.mInfo.mRxInfo.mRssi                  = Radio::kInvalidRssi;
@@ -326,12 +323,10 @@ void Link::ProcessReceivedPacket(Packet &aPacket, const Ip6::SockAddr &aSockAddr
 
     if (type != Header::kTypeAck)
     {
-        // No need to check state or channel for a TREL ack packet.
-        // Note that TREL ack may be received much later than the tx
-        // and device can be on a different rx channel.
+        // We do not check the radio state for a TREL ACK packet, as it
+        // can be received much later than the transmission.
 
         VerifyOrExit((mState == kStateReceive) || (mState == kStateTransmit));
-        VerifyOrExit(aPacket.GetHeader().GetChannel() == mRxChannel);
     }
 
     if (mPanId != Mac::kPanIdBroadcast)
@@ -346,6 +341,11 @@ void Link::ProcessReceivedPacket(Packet &aPacket, const Ip6::SockAddr &aSockAddr
 
     mRxPacketSenderAddr = aSockAddr;
     mRxPacketPeer       = Get<PeerTable>().FindMatching(aPacket.GetHeader().GetSource());
+
+    if (mRxPacketPeer != nullptr)
+    {
+        mRxPacketPeer->UpdateLastInteractionTime();
+    }
 
     if (type != Header::kTypeBroadcast)
     {
@@ -365,11 +365,19 @@ void Link::ProcessReceivedPacket(Packet &aPacket, const Ip6::SockAddr &aSockAddr
         SendAck(aPacket);
     }
 
+    // Drop the packet if there is a channel mismatch. We perform this
+    // check after all other validations to ensure we still `SendAck()`.
+    // TREL ACKs are used to monitor the TREL link status between peers
+    // and should be sent even if the packet is sent on a different
+    // channel (e.g., an MLE Announce message).
+
+    VerifyOrExit(aPacket.GetHeader().GetChannel() == mRxChannel);
+
     mRxFrame.mPsdu    = aPacket.GetPayload();
     mRxFrame.mLength  = aPacket.GetPayloadLength();
     mRxFrame.mChannel = aPacket.GetHeader().GetChannel();
 #if OPENTHREAD_CONFIG_MULTI_RADIO
-    mRxFrame.mRadioType = Mac::kRadioTypeTrel;
+    mRxFrame.mRadioType = Radio::kTypeTrel;
 #endif
     mRxFrame.mInfo.mRxInfo.mTimestamp             = 0;
     mRxFrame.mInfo.mRxInfo.mRssi                  = kRxRssi;
@@ -505,23 +513,15 @@ void Link::HandleNotifierEvents(Events aEvents)
 
 const char *Link::StateToString(State aState)
 {
-    static const char *const kStateStrings[] = {
-        "Disabled", // (0) kStateDisabled
-        "Sleep",    // (1) kStateSleep
-        "Receive",  // (2) kStateReceive
-        "Transmit", // (3) kStateTransmit
-    };
+#define StateMapList(_)           \
+    _(kStateDisabled, "Disabled") \
+    _(kStateSleep, "Sleep")       \
+    _(kStateReceive, "Receive")   \
+    _(kStateTransmit, "Transmit")
 
-    struct EnumCheck
-    {
-        InitEnumValidatorCounter();
-        ValidateNextEnum(kStateDisabled);
-        ValidateNextEnum(kStateSleep);
-        ValidateNextEnum(kStateReceive);
-        ValidateNextEnum(kStateTransmit);
-    };
+    DefineEnumStringArray(StateMapList);
 
-    return kStateStrings[aState];
+    return kStrings[aState];
 }
 
 // LCOV_EXCL_STOP

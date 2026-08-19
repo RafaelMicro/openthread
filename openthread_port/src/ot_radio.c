@@ -854,6 +854,8 @@ otError otPlatRadioTransmit(otInstance *aInstance, otRadioFrame *aFrame)
     assert(aInstance != NULL);
     assert(aFrame != NULL);
 
+    log_info("otPlatRadioTransmit dsn %d len %d channel %d", otMacFrameGetSequence(aFrame), aFrame->mLength, aFrame->mChannel);
+
     static uint32_t tx_timerWraps = 0U, tx_prev32Time = 0U;       
 
     uint8_t tx_control = TX_CONTROL_CSMACA_MASK;
@@ -1166,20 +1168,24 @@ void ot_radioTask(ot_system_event_t trxEvent)
             
             if (trxEvent & OT_SYSTEM_EVENT_RADIO_TX_DONE_NO_ACK_REQ) 
             {
+                log_info("radio event: TX_DONE_NO_ACK_REQ dsn %d", otMacFrameGetSequence(txframe));
                 otPlatRadioTxDone(otRadio_var.aInstance, txframe, NULL, OT_ERROR_NONE);
             }
             if (trxEvent & OT_SYSTEM_EVENT_RADIO_TX_ACKED) 
             {
+                log_info("radio event: TX_ACKED dsn %d", otMacFrameGetSequence(txframe));
                 otPlatRadioTxDone(otRadio_var.aInstance, txframe, otRadio_var.pAckFrame, OT_ERROR_NONE);
                 // log_info_hexdump("ack", otRadio_var.pAckFrame->mPsdu, otRadio_var.pAckFrame->mLength);
             }
             if (trxEvent & OT_SYSTEM_EVENT_RADIO_TX_NO_ACK) 
             {
+                log_info("radio event: TX_NO_ACK dsn %d", otMacFrameGetSequence(txframe));
                 otPlatRadioTxDone(otRadio_var.aInstance, txframe, NULL, OT_ERROR_NO_ACK);
                 // log_warn_hexdump("Tx No ACK", txframe->mPsdu, txframe->mLength);
             }
             if (trxEvent & OT_SYSTEM_EVENT_RADIO_TX_CCA_FAIL) 
             {
+                log_info("radio event: TX_CCA_FAIL dsn %d", otMacFrameGetSequence(txframe));
                 //otPlatRadioTxDone(otRadio_var.aInstance, txframe, NULL, OT_ERROR_CHANNEL_ACCESS_FAILURE);
                 otPlatRadioTxDone(otRadio_var.aInstance, txframe, NULL, OT_ERROR_CHANNEL_ACCESS_FAILURE);
                 // log_warn_hexdump("Tx CCA Fail", txframe->mPsdu, txframe->mLength);
@@ -1202,6 +1208,7 @@ void ot_radioTask(ot_system_event_t trxEvent)
 
         if (pframe) 
         {
+            log_info("radio event: RX_DONE dsn %d len %d", otMacFrameGetSequence(&pframe->frame), pframe->frame.mLength);
             otPlatRadioReceiveDone(otRadio_var.aInstance, &pframe->frame, OT_ERROR_NONE);
 
             OT_ENTER_CRITICAL();
@@ -1217,12 +1224,12 @@ void ot_radioTask(ot_system_event_t trxEvent)
         }
         else
         {
-            log_warn("otRadio_var.dbgRxFrameNum %d", otRadio_var.dbgRxFrameNum);
+            log_warn("radio event: RX_DONE but empty list, dbgRxFrameNum %d", otRadio_var.dbgRxFrameNum);
         }
     }
     else if (trxEvent & OT_SYSTEM_EVENT_RADIO_RX_NO_BUFF) 
     {
-        log_warn("no buffer");
+        log_warn("radio event: RX_NO_BUFF");
         // otPlatRadioReceiveDone(otRadio_var.aInstance, NULL, OT_ERROR_NO_BUFS);
     }
 }

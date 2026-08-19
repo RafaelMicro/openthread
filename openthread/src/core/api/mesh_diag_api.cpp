@@ -60,6 +60,11 @@ otError otMeshDiagGetNextChildInfo(otMeshDiagChildIterator *aIterator, otMeshDia
     return AsCoreType(aIterator).GetNextChildInfo(AsCoreType(aChildInfo));
 }
 
+otError otMeshDiagGetNextTlvInfo(otMeshDiagTlvIterator *aIterator, otMeshDiagTlvInfo *aTlvInfo)
+{
+    return AsCoreType(aIterator).GetNextTlvInfo(*aTlvInfo);
+}
+
 otError otMeshDiagQueryChildTable(otInstance                       *aInstance,
                                   uint16_t                          aRloc16,
                                   otMeshDiagQueryChildTableCallback aCallback,
@@ -82,6 +87,16 @@ otError otMeshDiagQueryRouterNeighborTable(otInstance                           
                                            void                                      *aContext)
 {
     return AsCoreType(aInstance).Get<Utils::MeshDiag>().QueryRouterNeighborTable(aRloc16, aCallback, aContext);
+}
+
+void otMeshDiagSetResponseTimeout(otInstance *aInstance, uint32_t aTimeout)
+{
+    AsCoreType(aInstance).Get<Utils::MeshDiag>().SetResponseTimeout(aTimeout);
+}
+
+uint32_t otMeshDiagGetResponseTimeout(otInstance *aInstance)
+{
+    return AsCoreType(aInstance).Get<Utils::MeshDiag>().GetResponseTimeout();
 }
 
 #endif // OPENTHREAD_CONFIG_MESH_DIAG_ENABLE && OPENTHREAD_FTD

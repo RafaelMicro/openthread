@@ -58,23 +58,32 @@ public:
 
         : mLastExpireTime(0)
         , mMulticastRouterSock(-1)
+        , mState(kStateDisabled)
+        , mRetryIntervalMs(kMinRetryIntervalMs)
+        , mNextRetryTime(0)
     {
     }
 
-    bool IsEnabled(void) const { return mMulticastRouterSock >= 0; }
+    bool IsEnabled(void) const { return mState == kStateEnabled; }
     void SetUp(void);
     void TearDown(void);
-    void Update(otSysMainloopContext &aContext) override;
-    void Process(const otSysMainloopContext &aContext) override;
+    void Update(Mainloop::Context &aContext) override;
+    void Process(const Mainloop::Context &aContext) override;
     void HandleStateChange(otInstance *aInstance, otChangedFlags aFlags);
 
 private:
-    enum
+    static constexpr uint32_t kMinRetryIntervalMs                       = 100;
+    static constexpr uint32_t kMaxRetryIntervalMs                       = 5000;
+    static constexpr uint16_t kMulticastForwardingCacheExpireTimeout    = 300;
+    static constexpr uint16_t kMulticastForwardingCacheExpiringInterval = 60;
+    static constexpr uint16_t kMulticastForwardingCacheTableSize =
+        OPENTHREAD_POSIX_CONFIG_MAX_MULTICAST_FORWARDING_CACHE_TABLE;
+
+    enum State : uint8_t
     {
-        kMulticastForwardingCacheExpireTimeout    = 300, //< Expire timeout of Multicast Forwarding Cache (in seconds)
-        kMulticastForwardingCacheExpiringInterval = 60,  //< Expire interval of Multicast Forwarding Cache (in seconds)
-        kMulticastForwardingCacheTableSize =
-            OPENTHREAD_POSIX_CONFIG_MAX_MULTICAST_FORWARDING_CACHE_TABLE, //< The max size of MFC table.
+        kStateDisabled,
+        kStateEnabling,
+        kStateEnabled,
     };
 
     enum MifIndex : uint8_t
@@ -114,7 +123,7 @@ private:
     void    Remove(const Ip6::Address &aAddress);
     void    UpdateMldReport(const Ip6::Address &aAddress, bool isAdd);
     bool    HasMulticastListener(const Ip6::Address &aAddress) const;
-    void    InitMulticastRouterSock(void);
+    otError InitMulticastRouterSock(void);
     void    FinalizeMulticastRouterSock(void);
     void    ProcessMulticastRouterMessages(void);
     otError AddMulticastForwardingCache(const Ip6::Address &aSrcAddr, const Ip6::Address &aGroupAddr, MifIndex aIif);
@@ -138,6 +147,9 @@ private:
     MulticastForwardingCache mMulticastForwardingCacheTable[kMulticastForwardingCacheTableSize];
     uint64_t                 mLastExpireTime;
     int                      mMulticastRouterSock;
+    State                    mState;
+    uint32_t                 mRetryIntervalMs;
+    uint64_t                 mNextRetryTime;
 };
 
 } // namespace Posix

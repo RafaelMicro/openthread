@@ -100,7 +100,7 @@ void ChannelManager::RequestNetworkChannelChange(uint8_t aChannel)
     mState   = kStateChangeRequested;
     mChannel = aChannel;
 
-    mTimer.Start(1 + Random::NonCrypto::GetUint32InRange(0, kRequestStartJitterInterval));
+    mTimer.Start(1 + Random::NonCrypto::GenerateUpToExcluding(kRequestStartJitterInterval));
 
     Get<Notifier>().Signal(kEventChannelManagerNewChannelChanged);
 
@@ -112,7 +112,7 @@ exit:
 #if OPENTHREAD_CONFIG_CHANNEL_MANAGER_CSL_CHANNEL_SELECT_ENABLE
 void ChannelManager::ChangeCslChannel(uint8_t aChannel)
 {
-    if (!(!Get<Mle::Mle>().IsRxOnWhenIdle() && Get<Mac::Mac>().IsCslEnabled()))
+    if (Get<Mle::Mle>().IsRxOnWhenIdle() || !Get<Mac::Mac>().IsCslEnabled())
     {
         // cannot select or use other channel
         ExitNow();

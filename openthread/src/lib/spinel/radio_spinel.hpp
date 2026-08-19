@@ -31,8 +31,8 @@
  *   This file includes definitions for the spinel based radio transceiver.
  */
 
-#ifndef RADIO_SPINEL_HPP_
-#define RADIO_SPINEL_HPP_
+#ifndef OT_LIB_SPINEL_RADIO_SPINEL_HPP_
+#define OT_LIB_SPINEL_RADIO_SPINEL_HPP_
 
 #include <openthread/platform/diag.h>
 #include <openthread/platform/radio.h>
@@ -106,34 +106,6 @@ struct RadioSpinelCallbacks
      * @param[in]  aSuccess   A value indicating if the switchover was successful or not.
      */
     void (*mSwitchoverDone)(otInstance *aInstance, bool aSuccess);
-
-#if OPENTHREAD_CONFIG_DIAG_ENABLE
-    /**
-     * This callback notifies diagnostics module using `RadioSpinel` of a received frame.
-     *
-     * This callback is used when diagnostics is enabled.
-     *
-     * @param[in]  aInstance  The OpenThread instance structure.
-     * @param[in]  aFrame     A pointer to the received frame or NULL if the receive operation failed.
-     * @param[in]  aError     OT_ERROR_NONE when successfully received a frame,
-     *                        OT_ERROR_ABORT when reception was aborted and a frame was not received,
-     *                        OT_ERROR_NO_BUFS when a frame could not be received due to lack of rx buffer space.
-     */
-    void (*mDiagReceiveDone)(otInstance *aInstance, otRadioFrame *aFrame, Error aError);
-
-    /**
-     * This callback notifies diagnostics module using `RadioSpinel` that the transmission has completed.
-     *
-     * This callback is used when diagnostics is enabled.
-     *
-     * @param[in]  aInstance  The OpenThread instance structure.
-     * @param[in]  aFrame     A pointer to the frame that was transmitted.
-     * @param[in]  aError     OT_ERROR_NONE when the frame was transmitted,
-     *                        OT_ERROR_CHANNEL_ACCESS_FAILURE tx could not take place due to activity on the
-     * channel, OT_ERROR_ABORT when transmission was aborted for other reasons.
-     */
-    void (*mDiagTransmitDone)(otInstance *aInstance, otRadioFrame *aFrame, Error aError);
-#endif // OPENTHREAD_CONFIG_DIAG_ENABLE
 
     /**
      * This method saves the radio spinel metrics to the temporary storage.
@@ -741,7 +713,7 @@ public:
      * Sets MAC key and key index to RCP.
      *
      * @param[in] aKeyIdMode  The key ID mode.
-     * @param[in] aKeyId      The key index.
+     * @param[in] aKeyIndex   The key index.
      * @param[in] aPrevKey    Pointer to previous MAC key.
      * @param[in] aCurrKey    Pointer to current MAC key.
      * @param[in] aNextKey    Pointer to next MAC key.
@@ -752,7 +724,7 @@ public:
      * @retval  OT_ERROR_RESPONSE_TIMEOUT   Failed due to no response received from the transceiver.
      */
     otError SetMacKey(uint8_t                 aKeyIdMode,
-                      uint8_t                 aKeyId,
+                      uint8_t                 aKeyIndex,
                       const otMacKeyMaterial *aPrevKey,
                       const otMacKeyMaterial *aCurrKey,
                       const otMacKeyMaterial *aNextKey);
@@ -852,7 +824,7 @@ public:
      *
      * @returns The current estimated RCP time in microseconds.
      */
-    uint64_t GetNow(void);
+    uint64_t GetNow(void) const;
 
     /**
      * Returns the bus speed between the host and the radio.
@@ -1036,22 +1008,21 @@ public:
 #endif
 #if OPENTHREAD_SPINEL_CONFIG_VENDOR_HOOK_ENABLE
     /**
-     * Defines a vendor "set property handler" hook to process vendor spinel properties.
+     * Defines a vendor "value is" hook to process vendor spinel properties.
      *
-     * The vendor handler should return `OT_ERROR_NOT_FOUND` status if it does not support "set" operation for the
-     * given property key. Otherwise, the vendor handler should behave like other property set handlers, i.e., it
-     * should first decode the value from the input spinel frame and then perform the corresponding set operation. The
-     * handler should not prepare the spinel response and therefore should not write anything to the NCP buffer. The
-     * `otError` returned from handler (other than `OT_ERROR_NOT_FOUND`) indicates the error in either parsing of the
-     * input or the error of the set operation. In case of a successful "set", `NcpBase` set command handler will call
-     * the `VendorGetPropertyHandler()` for the same property key to prepare the response.
+     * This hook is invoked when RadioSpinel receives a `SPINEL_CMD_PROP_VALUE_IS` command
+     * for a vendor property. Decode the value from `aBuffer`/`aLength` and process it.
+     * Return `OT_ERROR_NOT_FOUND` if the property key is not supported. Return
+     * another error (e.g., `OT_ERROR_PARSE`) if decoding or handling of the value fails.
      *
      * @param[in] aPropKey  The spinel property key.
+     * @param[in] aBuffer   A pointer to the buffer containing the property value.
+     * @param[in] aLength   The length of the @p aBuffer.
      *
-     * @returns OT_ERROR_NOT_FOUND if it does not support the given property key, otherwise the error in either parsing
-     *          of the input or the "set" operation.
+     * @returns OT_ERROR_NOT_FOUND if it does not support the given property key, or the error status if decoding
+     *          or handling of the value fails.
      */
-    otError VendorHandleValueIs(spinel_prop_key_t aPropKey);
+    otError VendorHandleValueIs(spinel_prop_key_t aPropKey, const uint8_t *aBuffer, uint16_t aLength);
 
     /**
      *  A callback type for restoring vendor properties.
@@ -1227,7 +1198,7 @@ private:
     }
 
     otError SetMacKey(uint8_t         aKeyIdMode,
-                      uint8_t         aKeyId,
+                      uint8_t         aKeyIndex,
                       const otMacKey &aPrevKey,
                       const otMacKey &aCurrKey,
                       const otMacKey &NextKey);
@@ -1336,7 +1307,7 @@ private:
 
     // Properties set by core.
     uint8_t  mKeyIdMode;
-    uint8_t  mKeyId;
+    uint8_t  mKeyIndex;
     otMacKey mPrevKey;
     otMacKey mCurrKey;
     otMacKey mNextKey;
@@ -1398,4 +1369,4 @@ private:
 } // namespace Spinel
 } // namespace ot
 
-#endif // RADIO_SPINEL_HPP_
+#endif // OT_LIB_SPINEL_RADIO_SPINEL_HPP_

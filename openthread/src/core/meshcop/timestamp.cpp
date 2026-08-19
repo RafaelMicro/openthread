@@ -33,6 +33,7 @@
 
 #include "timestamp.hpp"
 
+#include "common/bit_utils.hpp"
 #include "common/code_utils.hpp"
 #include "common/num_utils.hpp"
 #include "common/numeric_limits.hpp"
@@ -123,7 +124,7 @@ void Timestamp::AdvanceRandomTicks(void)
 {
     uint16_t ticks = GetTicks();
 
-    ticks += Random::NonCrypto::GetUint32InRange(1, kMaxTicks + 1);
+    ticks += Random::NonCrypto::GenerateInClosedRange<uint16_t>(1, kMaxTicks);
 
     if (ticks > kMaxTicks)
     {

@@ -31,8 +31,8 @@
  *   This file includes definitions for the message buffer pool and message buffers.
  */
 
-#ifndef MESSAGE_HPP_
-#define MESSAGE_HPP_
+#ifndef OT_CORE_COMMON_MESSAGE_HPP_
+#define OT_CORE_COMMON_MESSAGE_HPP_
 
 #include "openthread-core-config.h"
 
@@ -70,6 +70,7 @@ struct otMessage
 
 namespace ot {
 
+class UnitTester;
 template <typename UintType> class CrcCalculator;
 
 namespace Crypto {
@@ -79,6 +80,10 @@ class Sha256;
 class HmacSha256;
 
 } // namespace Crypto
+
+namespace Ip6 {
+class PlatTcp;
+} // namespace Ip6
 
 /**
  * @addtogroup core-message
@@ -141,9 +146,6 @@ class HmacSha256;
         }                                                        \
     } while (false)
 
-constexpr uint16_t kNumBuffers = OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS;
-constexpr uint16_t kBufferSize = OPENTHREAD_CONFIG_MESSAGE_BUFFER_SIZE;
-
 class Message;
 class MessagePool;
 class MessageQueue;
@@ -159,6 +161,15 @@ enum LinkSecurityMode : bool
 };
 
 /**
+ * Represents the clone mode indicating how the reserved header should be configured on the cloned message.
+ */
+enum CloneMode : uint8_t
+{
+    kNoReservedHeader,  ///< The clone message will have no reserved header.
+    kSameReservedHeader ///< The clone message will have the same reserved header size as the original `Message`.
+};
+
+/**
  * Represents a Message buffer.
  */
 class Buffer : public otMessageBuffer, public LinkedListEntry<Buffer>
@@ -166,6 +177,10 @@ class Buffer : public otMessageBuffer, public LinkedListEntry<Buffer>
     friend class Message;
 
 public:
+    static constexpr uint16_t kSize = OPENTHREAD_CONFIG_MESSAGE_BUFFER_SIZE; ///< Size of buffer in bytes.
+
+    typedef otMessageTxCallback TxCallback; ///< Message TX callback.
+
     /**
      * Returns a pointer to the next message buffer.
      *
@@ -190,6 +205,9 @@ public:
 protected:
     struct Metadata
     {
+#if OPENTHREAD_CONFIG_MULTIPLE_INSTANCE_ENABLE
+        Instance *mInstance;
+#endif
         bool mDirectTx : 1;            // Whether a direct transmission is required.
         bool mLinkSecurity : 1;        // Whether link security is enabled.
         bool mInPriorityQ : 1;         // Whether the message is queued in normal or priority queue.
@@ -209,7 +227,7 @@ protected:
         uint8_t mOrigin : 2;   // The origin of the message.
 #if OPENTHREAD_CONFIG_MULTI_RADIO
         uint8_t mRadioType : 2; // The radio link type the message was received on, or should be sent on.
-        static_assert(Mac::kNumRadioTypes <= (1 << 2), "mRadioType bitfield cannot store all radio type values");
+        static_assert(Radio::kNumTypes <= (1 << 2), "mRadioType bitfield cannot store all radio type values");
 #endif
         uint8_t mType : 3;    // The message type.
         uint8_t mSubType : 4; // The message sub type.
@@ -227,31 +245,31 @@ protected:
 #if OPENTHREAD_CONFIG_TIME_SYNC_ENABLE
         int64_t mNetworkTimeOffset; // The time offset to the Thread network time, in microseconds.
 #endif
-        TimeMilli    mTimestamp;   // The message timestamp.
-        Message     *mNext;        // Next message in a doubly linked list.
-        Message     *mPrev;        // Previous message in a doubly linked list.
-        MessagePool *mMessagePool; // Message pool for this message.
-        void        *mQueue;       // The queue where message is queued (if any). Queue type from `mInPriorityQ`.
-        RssAverager  mRssAverager; // The averager maintaining the received signal strength (RSS) average.
-        LqiAverager  mLqiAverager; // The averager maintaining the Link quality indicator (LQI) average.
+        TimeMilli   mTimestamp;   // The message timestamp.
+        Message    *mNext;        // Next message in a doubly linked list.
+        Message    *mPrev;        // Previous message in a doubly linked list.
+        TxCallback  mTxCallback;  // The callback to inform message TX success or failure.
+        void       *mTxContext;   // The arbitrary context associated with `mTxCallback`.
+        RssAverager mRssAverager; // The averager maintaining the received signal strength (RSS) average.
+        LqiAverager mLqiAverager; // The averager maintaining the Link quality indicator (LQI) average.
 #if OPENTHREAD_FTD
         ChildMask mChildMask; // ChildMask to indicate which sleepy children need to receive this.
 #endif
     };
 
-    static_assert(kBufferSize > sizeof(Metadata) + sizeof(otMessageBuffer), "Metadata does not fit in a single buffer");
+    static_assert(kSize > sizeof(Metadata) + sizeof(otMessageBuffer), "Metadata does not fit in a single buffer");
 
-    static constexpr uint16_t kBufferDataSize     = kBufferSize - sizeof(otMessageBuffer);
+    static constexpr uint16_t kBufferDataSize     = kSize - sizeof(otMessageBuffer);
     static constexpr uint16_t kHeadBufferDataSize = kBufferDataSize - sizeof(Metadata);
 
-    Metadata       &GetMetadata(void) { return mBuffer.mHead.mMetadata; }
-    const Metadata &GetMetadata(void) const { return mBuffer.mHead.mMetadata; }
+    Metadata       &GetMetadata(void) OT_LIFETIME_BOUND { return mBuffer.mHead.mMetadata; }
+    const Metadata &GetMetadata(void) const OT_LIFETIME_BOUND { return mBuffer.mHead.mMetadata; }
 
-    uint8_t       *GetFirstData(void) { return mBuffer.mHead.mData; }
-    const uint8_t *GetFirstData(void) const { return mBuffer.mHead.mData; }
+    uint8_t       *GetFirstData(void) OT_LIFETIME_BOUND { return mBuffer.mHead.mData; }
+    const uint8_t *GetFirstData(void) const OT_LIFETIME_BOUND { return mBuffer.mHead.mData; }
 
-    uint8_t       *GetData(void) { return mBuffer.mData; }
-    const uint8_t *GetData(void) const { return mBuffer.mData; }
+    uint8_t       *GetData(void) OT_LIFETIME_BOUND { return mBuffer.mData; }
+    const uint8_t *GetData(void) const OT_LIFETIME_BOUND { return mBuffer.mData; }
 
 private:
     union
@@ -265,13 +283,13 @@ private:
     } mBuffer;
 };
 
-static_assert(sizeof(Buffer) >= kBufferSize,
+static_assert(sizeof(Buffer) >= Buffer::kSize,
               "Buffer size is not valid. Increase OPENTHREAD_CONFIG_MESSAGE_BUFFER_SIZE.");
 
 /**
  * Represents a message.
  */
-class Message : public otMessage, public Buffer, public GetProvider<Message>
+class OT_GSL_OWNER Message : public otMessage, public Buffer, public GetProvider<Message>
 {
     friend class Checksum;
     friend class CrcCalculator<uint16_t>;
@@ -279,9 +297,11 @@ class Message : public otMessage, public Buffer, public GetProvider<Message>
     friend class Crypto::HmacSha256;
     friend class Crypto::Sha256;
     friend class Crypto::AesCcm;
+    friend class Ip6::PlatTcp;
     friend class MessagePool;
     friend class MessageQueue;
     friend class PriorityQueue;
+    friend class ot::UnitTester;
 
 public:
     /**
@@ -320,25 +340,6 @@ public:
     };
 
     static constexpr uint8_t kNumPriorities = 4; ///< Number of priority levels.
-
-    /**
-     * Represents the message ownership model when a `Message` instance is passed to a method/function.
-     */
-    enum Ownership : uint8_t
-    {
-        /**
-         * This value indicates that the method/function receiving a `Message` instance should take custody of the
-         * message (e.g., the method should `Free()` the message if no longer needed).
-         */
-        kTakeCustody,
-
-        /**
-         * This value indicates that the method/function receiving a `Message` instance does not own the message (e.g.,
-         * it should not `Free()` or `Enqueue()` it in a queue). The receiving method/function should create a
-         * copy/clone of the message to keep (if/when needed).
-         */
-        kCopyToUse,
-    };
 
     /**
      * Represents an IPv6 message origin.
@@ -479,7 +480,11 @@ public:
      *
      * @returns A reference to the `Instance`.
      */
-    Instance &GetInstance(void) const;
+#if OPENTHREAD_CONFIG_MULTIPLE_INSTANCE_ENABLE
+    Instance &GetInstance(void) const { return *UpdateActiveInstance(GetMetadata().mInstance); }
+#else
+    Instance &GetInstance(void) const { return GetSingleInstance(); }
+#endif
 
     /**
      * Frees this message buffer.
@@ -491,7 +496,7 @@ public:
      *
      * @returns A pointer to the next message in the list or `nullptr` if at the end of the list.
      */
-    Message *GetNext(void) const;
+    Message *GetNext(void) const { return Next(); }
 
     /**
      * Returns the number of bytes in the message.
@@ -511,6 +516,16 @@ public:
     Error SetLength(uint16_t aLength);
 
     /**
+     * Increases the message length by a given number of bytes.
+     *
+     * @param[in]  aSize     The number of bytes to increase the message length by.
+     *
+     * @retval kErrorNone    Successfully increased the length of the message.
+     * @retval kErrorNoBufs  Failed to allocate new buffers to grow the message.
+     */
+    Error IncreaseLength(uint16_t aSize);
+
+    /**
      * Returns the number of buffers in the message.
      */
     uint8_t GetBufferCount(void) const;
@@ -527,7 +542,7 @@ public:
      *
      * @param[in]  aDelta  The number of bytes to move the current offset, which may be positive or negative.
      */
-    void MoveOffset(int aDelta);
+    void MoveOffset(int16_t aDelta);
 
     /**
      * Sets the byte offset within the message.
@@ -535,6 +550,13 @@ public:
      * @param[in]  aOffset  The byte offset within the message.
      */
     void SetOffset(uint16_t aOffset);
+
+    /**
+     * Determines the length (number of bytes) in the message from the current message offset to the end of the message.
+     *
+     * @return Number of bytes in the message starting from the current message offset to the end of the message.
+     */
+    uint16_t DetermineLengthAfterOffset(void) const;
 
     /**
      * Returns the type of the message.
@@ -627,13 +649,15 @@ public:
 
     /**
      * Sets the messages priority.
-     * If the message is already queued in a priority queue, changing the priority ensures to
-     * update the message in the associated queue.
+     *
+     * If the message is already enqueued in a priority queue, the priority cannot be changed and `kErrorInvalidState`
+     * is returned.
      *
      * @param[in]  aPriority  The message priority level.
      *
      * @retval kErrorNone          Successfully set the priority for the message.
      * @retval kErrorInvalidArgs   Priority level is not invalid.
+     * @retval kErrorInvalidState  Message is already queued in a priority queue.
      */
     Error SetPriority(Priority aPriority);
 
@@ -645,6 +669,35 @@ public:
      * @returns A string representation of @p aPriority.
      */
     static const char *PriorityToString(Priority aPriority);
+
+    /**
+     * Registers a callback to be notified of a message's transmission outcome.
+     *
+     * The registered `TxCallback` provides notification of the transmission status of the message from this device to
+     * an immediate neighbor (one hop). It doesn't indicate delivery to the final multi-hop destination.
+     *
+     * For unicast messages, `kErrorNone` callback error signifies successful delivery and MAC acknowledgment for all
+     * fragments of the message to an immediate neighbor, irrespective of whether direct or indirect TX is used. For
+     * multicast messages, `kErrorNone` indicates successful broadcast of all fragments. Note that no MAC-level ack
+     * is expected for broadcast frame transmissions.
+     *
+     * Only one callback can be registered per `Message`. Subsequent calls replace any existing callback. If the
+     * message is never actually sent, the callback will still be invoked when the message is freed, with `kErrorDrop`
+     * as the error.
+     *
+     * @param[in] aCallback   The `TxCallback` function to register with the message.
+     * @param[in] aContext    An arbitrary context that will be passed when @p aCallback is invoked.
+     */
+    void RegisterTxCallback(TxCallback aCallback, void *aContext);
+
+    /**
+     * Invokes the registered `TxCallback` on the `Message` with the given error status.
+     *
+     * The `TxCallback` is a one-time callback, meaning it's automatically cleared once it's invoked.
+     *
+     * @param[in] aError The error to report.
+     */
+    void InvokeTxCallback(Error aError);
 
     /**
      * Prepends bytes to the front of the message.
@@ -896,6 +949,65 @@ public:
     }
 
     /**
+     * Reads a given number of bytes from the message at a given offset range and advances the offset range.
+     *
+     * @param[in,out] aOffsetRange  The offset range in the message to read from. On success, it is advanced.
+     * @param[out]    aBuf          A pointer to a data buffer to copy the read bytes into.
+     * @param[in]     aLength       Number of bytes to read.
+     *
+     * @retval kErrorNone     Requested bytes were successfully read from message. @p aOffsetRange is advanced.
+     * @retval kErrorParse    Not enough bytes remaining to read the requested @p aLength. @p aOffsetRange is unchanged.
+     */
+    Error ReadAndAdvance(OffsetRange &aOffsetRange, void *aBuf, uint16_t aLength) const;
+
+    /**
+     * Reads an object from the message at a given offset range and advances the offset range.
+     *
+     * @tparam     ObjectType   The object type to read from the message.
+     *
+     * @param[in,out] aOffsetRange  The offset range in the message to read from. On success, it is advanced.
+     * @param[out]    aObject       A reference to the object to read into.
+     *
+     * @retval kErrorNone     Object @p aObject was successfully read from message. @p aOffsetRange is advanced.
+     * @retval kErrorParse    Not enough bytes remaining in message to read the entire object. @p aOffsetRange is
+     * unchanged.
+     */
+    template <typename ObjectType> Error ReadAndAdvance(OffsetRange &aOffsetRange, ObjectType &aObject) const
+    {
+        static_assert(!TypeTraits::IsPointer<ObjectType>::kValue, "ObjectType must not be a pointer");
+
+        return ReadAndAdvance(aOffsetRange, &aObject, sizeof(ObjectType));
+    }
+
+    /**
+     * Reads a given number of bytes from the message at the current message offset and advances the message offset.
+     *
+     * @param[out] aBuf     A pointer to a data buffer to copy the read bytes into.
+     * @param[in]  aLength  Number of bytes to read.
+     *
+     * @retval kErrorNone     Requested bytes were successfully read from message. Message offset is advanced.
+     * @retval kErrorParse    Not enough bytes remaining to read the requested @p aLength. Message offset is unchanged.
+     */
+    Error ReadAtAndAdvanceOffset(void *aBuf, uint16_t aLength);
+
+    /**
+     * Reads an object from the message at the current message offset and advances the message offset.
+     *
+     * @tparam     ObjectType   The object type to read from the message.
+     *
+     * @param[out] aObject      A reference to the object to read into.
+     *
+     * @retval kErrorNone     Object @p aObject was successfully read from message. Message offset is advanced.
+     * @retval kErrorParse    Not enough bytes remaining in message to read the entire object. Offset is unchanged.
+     */
+    template <typename ObjectType> Error ReadAtAndAdvanceOffset(ObjectType &aObject)
+    {
+        static_assert(!TypeTraits::IsPointer<ObjectType>::kValue, "ObjectType must not be a pointer");
+
+        return ReadAtAndAdvanceOffset(&aObject, sizeof(ObjectType));
+    }
+
+    /**
      * Compares the bytes in the message at a given offset with a given byte array.
      *
      * If there are fewer bytes available in the message than the requested @p aLength, the comparison is treated as
@@ -911,6 +1023,22 @@ public:
      *          FALSE otherwise.
      */
     bool CompareBytes(uint16_t aOffset, const void *aBuf, uint16_t aLength, ByteMatcher aMatcher = nullptr) const;
+
+    /**
+     * Compares the bytes in the message from a given offset range with a given byte array.
+     *
+     * If there are fewer bytes available in the message than @p aOffsetRange, the comparison is treated as failure
+     * (returns FALSE).
+     *
+     * @param[in]  aOffsetRange  The offset range in the message to read from for the comparison.
+     * @param[in]  aBuf       A pointer to a data buffer to compare with the bytes from message.
+     * @param[in]  aMatcher   A `ByteMatcher` function pointer to match the bytes. If `nullptr` then bytes are directly
+     *                        compared.
+     *
+     * @returns TRUE if there are enough bytes available in @p aMessage and they match the bytes from @p aBuf,
+     *          FALSE otherwise.
+     */
+    bool CompareBytes(const OffsetRange &aOffsetRange, const void *aBuf, ByteMatcher aMatcher = nullptr) const;
 
     /**
      * Compares the bytes in the message at a given offset with bytes read from another message.
@@ -1017,28 +1145,42 @@ public:
     }
 
     /**
-     * Creates a copy of the message.
+     * Creates a copy of the message using a given configuration.
      *
-     * It allocates the new message from the same message pool as the original one and copies @p aLength octets
-     * of the payload. The `Type`, `SubType`, `LinkSecurity`, `Offset`, `InterfaceId`, and `Priority` fields on the
-     * cloned message are also copied from the original one.
+     * The `Type`, `SubType`, `LinkSecurity`, `Offset`, `Priority`, `LoopbackToHostAllowed`, `Origin`, `Timestamp`,
+     * `MeshDest`, `PanId`, `Channel`, `RssAverager`, `LqiAverager`, and `TimeSync` fields on the cloned message are
+     * also copied from the original one.
      *
-     * @param[in] aLength  Number of payload bytes to copy.
+     * @param[in] aLength         Number of message bytes to copy.
+     * @param[in] aReserveHeader  Number of header bytes to reserve in the new cloned message.
      *
-     * @returns A pointer to the message or nullptr if insufficient message buffers are available.
+     * @returns A pointer to the message or `nullptr` if insufficient message buffers are available.
      */
-    Message *Clone(uint16_t aLength) const;
+    Message *Clone(uint16_t aLength, uint16_t aReserveHeader) const;
 
     /**
      * Creates a copy of the message.
      *
-     * It allocates the new message from the same message pool as the original one and copies the entire payload. The
-     * `Type`, `SubType`, `LinkSecurity`, `Offset`, `InterfaceId`, and `Priority` fields on the cloned message are also
-     * copied from the original one.
+     * @tparam kMode Specifies the clone mode (whether to keep the same reserved header size or have none).
+     *
+     * See the non-templated `Clone()` method for details on which message fields are also copied.
      *
      * @returns A pointer to the message or `nullptr` if insufficient message buffers are available.
      */
-    Message *Clone(void) const { return Clone(GetLength()); }
+    template <CloneMode kMode> Message *Clone(void) const;
+
+    /**
+     * Creates a copy of the message.
+     *
+     * @tparam kMode Specifies the clone mode (whether to keep the same reserved header size or have none).
+     *
+     * See the non-templated `Clone()` method for details on which message fields are also copied.
+     *
+     * @param[in] aLength  Number of message bytes to copy.
+     *
+     * @returns A pointer to the message or `nullptr` if insufficient message buffers are available.
+     */
+    template <CloneMode kMode> Message *Clone(uint16_t aLength) const;
 
     /**
      * Returns the datagram tag used for 6LoWPAN fragmentation or the identification used for IPv6
@@ -1369,26 +1511,6 @@ public:
     void UpdateLinkInfoFrom(const ThreadLinkInfo &aLinkInfo);
 
     /**
-     * Returns a pointer to the message queue (if any) where this message is queued.
-     *
-     * @returns A pointer to the message queue or `nullptr` if not in any message queue.
-     */
-    MessageQueue *GetMessageQueue(void) const
-    {
-        return !GetMetadata().mInPriorityQ ? static_cast<MessageQueue *>(GetMetadata().mQueue) : nullptr;
-    }
-
-    /**
-     * Returns a pointer to the priority message queue (if any) where this message is queued.
-     *
-     * @returns A pointer to the priority queue or `nullptr` if not in any priority queue.
-     */
-    PriorityQueue *GetPriorityQueue(void) const
-    {
-        return GetMetadata().mInPriorityQ ? static_cast<PriorityQueue *>(GetMetadata().mQueue) : nullptr;
-    }
-
-    /**
      * Indicates whether or not the message is also used for time sync purpose.
      *
      * When OPENTHREAD_CONFIG_TIME_SYNC_ENABLE is 0, this method always return false.
@@ -1451,14 +1573,14 @@ public:
      *
      * @returns The radio link type of the message.
      */
-    Mac::RadioType GetRadioType(void) const { return static_cast<Mac::RadioType>(GetMetadata().mRadioType); }
+    Radio::Type GetRadioType(void) const { return static_cast<Radio::Type>(GetMetadata().mRadioType); }
 
     /**
      * Sets the radio link type the message was received on, or should be sent on.
      *
      * @param[in] aRadioType   A radio link type of the message.
      */
-    void SetRadioType(Mac::RadioType aRadioType)
+    void SetRadioType(Radio::Type aRadioType)
     {
         GetMetadata().mIsRadioTypeSet = true;
         GetMetadata().mRadioType      = aRadioType;
@@ -1474,7 +1596,7 @@ public:
 #endif // #if OPENTHREAD_CONFIG_MULTI_RADIO
 
 protected:
-    class ConstIterator : public ItemPtrIterator<const Message, ConstIterator>
+    class OT_GSL_POINTER ConstIterator : public ItemPtrIterator<const Message, ConstIterator>
     {
         friend class ItemPtrIterator<const Message, ConstIterator>;
 
@@ -1490,7 +1612,7 @@ protected:
         void Advance(void) { mItem = mItem->GetNext(); }
     };
 
-    class Iterator : public ItemPtrIterator<Message, Iterator>
+    class OT_GSL_POINTER Iterator : public ItemPtrIterator<Message, Iterator>
     {
         friend class ItemPtrIterator<Message, Iterator>;
 
@@ -1517,20 +1639,21 @@ protected:
     void     SetReserved(uint16_t aReservedHeader) { GetMetadata().mReserved = aReservedHeader; }
 
 private:
-    class Chunk : public Data<kWithUint16Length>
+    class OT_GSL_POINTER Chunk : public Data<kWithUint16Length>
     {
     public:
-        const Buffer *GetBuffer(void) const { return mBuffer; }
+        // Note: `GetBytes() const OT_LIFETIME_BOUND` is inherited from `Data<kWithUint16Length>`.
+        const Buffer *GetBuffer(void) const OT_LIFETIME_BOUND { return mBuffer; }
         void          SetBuffer(const Buffer *aBuffer) { mBuffer = aBuffer; }
 
     private:
         const Buffer *mBuffer; // Buffer containing the chunk
     };
 
-    class MutableChunk : public Chunk
+    class OT_GSL_POINTER MutableChunk : public Chunk
     {
     public:
-        uint8_t *GetBytes(void) { return AsNonConst(Chunk::GetBytes()); }
+        uint8_t *GetBytes(void) OT_LIFETIME_BOUND { return AsNonConst(Chunk::GetBytes()); }
     };
 
     void GetFirstChunk(uint16_t aOffset, uint16_t &aLength, Chunk &aChunk) const;
@@ -1546,19 +1669,17 @@ private:
         AsConst(this)->GetNextChunk(aLength, static_cast<Chunk &>(aChunk));
     }
 
-    MessagePool *GetMessagePool(void) const { return GetMetadata().mMessagePool; }
-    void         SetMessagePool(MessagePool *aMessagePool) { GetMetadata().mMessagePool = aMessagePool; }
-
-    bool IsInAQueue(void) const { return (GetMetadata().mQueue != nullptr); }
-    void SetMessageQueue(MessageQueue *aMessageQueue);
-    void SetPriorityQueue(PriorityQueue *aPriorityQueue);
+    void MarkAsNotInAQueue(void);
+    bool IsInAQueue(void) const { return (Prev() != this); }
+    bool IsInAPriorityQueue(void) const { return GetMetadata().mInPriorityQ; }
 
     void SetRssAverager(const RssAverager &aRssAverager) { GetMetadata().mRssAverager = aRssAverager; }
     void SetLqiAverager(const LqiAverager &aLqiAverager) { GetMetadata().mLqiAverager = aLqiAverager; }
 
-    Message       *&Next(void) { return GetMetadata().mNext; }
-    Message *const &Next(void) const { return GetMetadata().mNext; }
-    Message       *&Prev(void) { return GetMetadata().mPrev; }
+    Message       *&Next(void) OT_LIFETIME_BOUND { return GetMetadata().mNext; }
+    Message *const &Next(void) const OT_LIFETIME_BOUND { return GetMetadata().mNext; }
+    Message       *&Prev(void) OT_LIFETIME_BOUND { return GetMetadata().mPrev; }
+    Message *const &Prev(void) const OT_LIFETIME_BOUND { return GetMetadata().mPrev; }
 
     static Message       *NextOf(Message *aMessage) { return (aMessage != nullptr) ? aMessage->Next() : nullptr; }
     static const Message *NextOf(const Message *aMessage) { return (aMessage != nullptr) ? aMessage->Next() : nullptr; }
@@ -1569,7 +1690,7 @@ private:
 /**
  * Implements a message queue.
  */
-class MessageQueue : public otMessageQueue, private NonCopyable
+class MessageQueue : public otMessageQueue, public Clearable<MessageQueue>, private NonCopyable
 {
     friend class Message;
     friend class PriorityQueue;
@@ -1590,7 +1711,7 @@ public:
     /**
      * Initializes the message queue.
      */
-    MessageQueue(void) { SetTail(nullptr); }
+    MessageQueue(void) { Clear(); }
 
 #if OPENTHREAD_PLATFORM_NEXUS
     /**
@@ -1600,18 +1721,26 @@ public:
 #endif
 
     /**
-     * Returns a pointer to the first message.
+     * Indicates whether the message queue is empty.
      *
-     * @returns A pointer to the first message.
+     * @retval TRUE   The message queue is empty.
+     * @retval FALSE  The message queue is not empty.
      */
-    Message *GetHead(void) { return Message::NextOf(GetTail()); }
+    bool IsEmpty(void) const { return GetHead() == nullptr; }
 
     /**
      * Returns a pointer to the first message.
      *
      * @returns A pointer to the first message.
      */
-    const Message *GetHead(void) const { return Message::NextOf(GetTail()); }
+    Message *GetHead(void) { return static_cast<Message *>(mData); }
+
+    /**
+     * Returns a pointer to the first message.
+     *
+     * @returns A pointer to the first message.
+     */
+    const Message *GetHead(void) const { return static_cast<const Message *>(mData); }
 
     /**
      * Adds a message to the end of the list.
@@ -1648,6 +1777,15 @@ public:
     void DequeueAndFreeAll(void);
 
     /**
+     * Enqueues all messages from another message queue at the end of this queue.
+     *
+     * Upon return, @p aOtherQueue will be empty.
+     *
+     * @param[in,out] aOtherQueue  The other message queue to enqueue from.
+     */
+    void EnqueueAllFrom(MessageQueue &aOtherQueue);
+
+    /**
      * Gets the information about number of messages and buffers in the queue.
      *
      * @param[out] aInfo  A reference to `Info` structure to update.
@@ -1677,9 +1815,10 @@ public:
     Message::ConstIterator end(void) const { return Message::ConstIterator(); }
 
 private:
-    Message       *GetTail(void) { return static_cast<Message *>(mData); }
-    const Message *GetTail(void) const { return static_cast<const Message *>(mData); }
-    void           SetTail(Message *aMessage) { mData = aMessage; }
+    void           SetHead(Message *aMessage) { mData = aMessage; }
+    Message       *GetTail(void) { return static_cast<Message *>(mData2); }
+    const Message *GetTail(void) const { return static_cast<const Message *>(mData2); }
+    void           SetTail(Message *aMessage) { mData2 = aMessage; }
 };
 
 /**
@@ -1712,14 +1851,14 @@ public:
      *
      * @returns A pointer to the first message.
      */
-    Message *GetHead(void) { return AsNonConst(AsConst(this)->GetHead()); }
+    Message *GetHead(void) { return mHead; }
 
     /**
      * Returns a pointer to the first message.
      *
      * @returns A pointer to the first message.
      */
-    const Message *GetHead(void) const;
+    const Message *GetHead(void) const { return mHead; }
 
     /**
      * Returns a pointer to the first message for a given priority level.
@@ -1808,18 +1947,14 @@ public:
     Message::ConstIterator end(void) const { return Message::ConstIterator(); }
 
 private:
-    uint8_t PrevPriority(uint8_t aPriority) const
+    const Message *FindTailForPriorityOrHigher(uint8_t aPriority) const;
+
+    Message *FindTailForPriorityOrHigher(uint8_t aPriority)
     {
-        return (aPriority == Message::kNumPriorities - 1) ? 0 : (aPriority + 1);
+        return AsNonConst(AsConst(this)->FindTailForPriorityOrHigher(aPriority));
     }
 
-    const Message *FindFirstNonNullTail(Message::Priority aStartPriorityLevel) const;
-
-    Message *FindFirstNonNullTail(Message::Priority aStartPriorityLevel)
-    {
-        return AsNonConst(AsConst(this)->FindFirstNonNullTail(aStartPriorityLevel));
-    }
-
+    Message *mHead;
     Message *mTails[Message::kNumPriorities]; // Tail pointers associated with different priority levels.
 };
 
@@ -1837,6 +1972,13 @@ public:
      * Initializes the object.
      */
     explicit MessagePool(Instance &aInstance);
+
+#if OPENTHREAD_CONFIG_PLATFORM_MESSAGE_MANAGEMENT
+    /**
+     * Tears down the object and releases platform managed resources.
+     */
+    ~MessagePool(void);
+#endif
 
     /**
      * Allocates a new message with specified settings.
@@ -1905,6 +2047,8 @@ public:
     void ResetMaxUsedBufferCount(void) { mMaxAllocated = mNumAllocated; }
 
 private:
+    static constexpr uint16_t kNumBuffers = OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS;
+
     Buffer *NewBuffer(Message::Priority aPriority);
     void    FreeBuffers(Buffer *aBuffer);
     Error   ReclaimBuffers(Message::Priority aPriority);
@@ -1916,7 +2060,11 @@ private:
     uint16_t mMaxAllocated;
 };
 
-inline Instance &Message::GetInstance(void) const { return GetMessagePool()->GetInstance(); }
+// Declare specializations of `Message::Clone<CloneMode>()` (implemented in `message.cpp`).
+template <> Message *Message::Clone<kNoReservedHeader>(void) const;
+template <> Message *Message::Clone<kSameReservedHeader>(void) const;
+template <> Message *Message::Clone<kNoReservedHeader>(uint16_t aLength) const;
+template <> Message *Message::Clone<kSameReservedHeader>(uint16_t aLength) const;
 
 /**
  * @}
@@ -1931,4 +2079,4 @@ DefineMapEnum(otMessageOrigin, Message::Origin);
 
 } // namespace ot
 
-#endif // MESSAGE_HPP_
+#endif // OT_CORE_COMMON_MESSAGE_HPP_

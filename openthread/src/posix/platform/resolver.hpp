@@ -36,6 +36,7 @@
 #include <sys/select.h>
 
 #include "logger.hpp"
+#include "mainloop.hpp"
 
 #if OPENTHREAD_CONFIG_DNS_UPSTREAM_QUERY_ENABLE
 
@@ -92,14 +93,14 @@ public:
      *
      * @param[in,out]  aContext  The mainloop context.
      */
-    void UpdateFdSet(otSysMainloopContext &aContext);
+    void UpdateFdSet(Mainloop::Context &aContext);
 
     /**
      * Handles the result of select.
      *
      * @param[in]  aContext  The mainloop context.
      */
-    void Process(const otSysMainloopContext &aContext);
+    void Process(const Mainloop::Context &aContext);
 
     /**
      * Sets whether to retrieve upstream DNS servers from "resolv.conf".
@@ -122,7 +123,6 @@ public:
      *
      * @param[in] aRecursiveDnsServers A pointer to the list of IPv6 recursive DNS server addresses.
      * @param[in] aNumServers          The number of recursive DNS servers.
-     *
      */
     void SetRecursiveDnsServerList(const otIp6Address *aRecursiveDnsServers, uint32_t aNumServers);
 

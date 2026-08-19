@@ -44,7 +44,7 @@ Error Dataset::Info::GenerateRandom(Instance &aInstance)
 {
     Error            error;
     Mac::ChannelMask supportedChannels = aInstance.Get<Mac::Mac>().GetSupportedChannelMask();
-    Mac::ChannelMask preferredChannels(aInstance.Get<Radio>().GetPreferredChannelMask());
+    Mac::ChannelMask preferredChannels(aInstance.Get<Radio::Radio>().GetPreferredChannelMask());
     StringWriter     nameWriter(mNetworkName.m8, sizeof(mNetworkName));
 
     // If the preferred channel mask is not empty, select a random
@@ -71,10 +71,10 @@ Error Dataset::Info::GenerateRandom(Instance &aInstance)
 
     SuccessOrExit(error = AsCoreType(&mNetworkKey).GenerateRandom());
     SuccessOrExit(error = AsCoreType(&mPskc).GenerateRandom());
-    SuccessOrExit(error = Random::Crypto::Fill(mExtendedPanId));
+    SuccessOrExit(error = AsCoreType(&mExtendedPanId).GenerateRandom());
     SuccessOrExit(error = AsCoreType(&mMeshLocalPrefix).GenerateRandomUla());
 
-    nameWriter.Append("%s-%04x", NetworkName::kNetworkNameInit, mPanId);
+    nameWriter.Append("%s-%04x", NetworkIdentity::kDefaultNetworkName, mPanId);
 
     mComponents.mIsActiveTimestampPresent = true;
     mComponents.mIsNetworkKeyPresent      = true;
@@ -565,6 +565,27 @@ Error Dataset::WriteTimestamp(Type aType, const Timestamp &aTimestamp)
 
 void Dataset::RemoveTimestamp(Type aType) { RemoveTlv(TimestampTlvFor(aType)); }
 
+bool Dataset::Equals(const Dataset &aOther) const
+{
+    bool equals = false;
+
+    VerifyOrExit(mLength == aOther.mLength);
+
+    // Ensure every TLV in this dataset is present in `aOther` with the same type and value.
+    for (const Tlv *tlv = GetTlvsStart(); tlv < GetTlvsEnd(); tlv = tlv->GetNext())
+    {
+        const Tlv *otherTlv = aOther.FindTlv(tlv->GetType());
+
+        VerifyOrExit(otherTlv != nullptr);
+        VerifyOrExit(memcmp(tlv, otherTlv, tlv->GetSize()) == 0);
+    }
+
+    equals = true;
+
+exit:
+    return equals;
+}
+
 bool Dataset::IsSubsetOf(const Dataset &aOther) const
 {
     bool isSubset = false;
@@ -588,6 +609,51 @@ bool Dataset::IsSubsetOf(const Dataset &aOther) const
 
 exit:
     return isSubset;
+}
+
+bool Dataset::AffectsConnectivity(Instance &aInstance) const
+{
+    bool               affects = true;
+    ChannelTlvValue    channelValue;
+    Mac::PanId         panId;
+    Ip6::NetworkPrefix meshLocalPrefix;
+
+    if (Read<ChannelTlv>(channelValue) == kErrorNone)
+    {
+        VerifyOrExit(channelValue.GetChannel() == aInstance.Get<Mac::Mac>().GetPanChannel());
+    }
+
+    if (Read<PanIdTlv>(panId) == kErrorNone)
+    {
+        VerifyOrExit(panId == aInstance.Get<Mac::Mac>().GetPanId());
+    }
+
+    if (Read<MeshLocalPrefixTlv>(meshLocalPrefix) == kErrorNone)
+    {
+        VerifyOrExit(meshLocalPrefix == aInstance.Get<Mle::Mle>().GetMeshLocalPrefix());
+    }
+
+    VerifyOrExit(!AffectsNetworkKey(aInstance));
+
+    affects = false;
+
+exit:
+    return affects;
+}
+
+bool Dataset::AffectsNetworkKey(Instance &aInstance) const
+{
+    bool       affects = false;
+    NetworkKey networkKey;
+    NetworkKey localNetworkKey;
+
+    SuccessOrExit(Read<NetworkKeyTlv>(networkKey));
+
+    aInstance.Get<KeyManager>().GetNetworkKey(localNetworkKey);
+    affects = (networkKey != localNetworkKey);
+
+exit:
+    return affects;
 }
 
 const char *Dataset::TypeToString(Type aType) { return (aType == kActive) ? "Active" : "Pending"; }

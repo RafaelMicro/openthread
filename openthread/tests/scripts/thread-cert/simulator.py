@@ -52,14 +52,19 @@ def dbg_print(*args):
 
 class BaseSimulator(object):
 
-    def __init__(self):
+    def __init__(self, message_factory):
         self._nodes = {}
         self.commissioning_messages = {}
         self._payload_parse_factory = mesh_cop.MeshCopCommandFactory(mesh_cop.create_default_mesh_cop_tlv_factories())
         self._mesh_cop_msg_set = mesh_cop.create_mesh_cop_message_type_set()
+        self._message_factory = message_factory
 
     def __del__(self):
         self._nodes = None
+
+    def add_network_key(self, network_key):
+        if self._message_factory:
+            self._message_factory.key_manager.add_key(bytes.fromhex(network_key))
 
     def add_node(self, node):
         self._nodes[node.nodeid] = node
@@ -93,9 +98,9 @@ class BaseSimulator(object):
 
 class RealTime(BaseSimulator):
 
-    def __init__(self, use_message_factory=True):
-        super(RealTime, self).__init__()
-        self._sniffer = config.create_default_thread_sniffer(use_message_factory=use_message_factory)
+    def __init__(self, message_factory=None):
+        super().__init__(message_factory)
+        self._sniffer = config.create_default_thread_sniffer(message_factory)
         self._sniffer.start()
 
     def set_lowpan_context(self, cid, prefix):
@@ -158,8 +163,8 @@ class VirtualTime(BaseSimulator):
 
     _message_factory = None
 
-    def __init__(self, use_message_factory=True):
-        super().__init__()
+    def __init__(self, message_factory=None):
+        super().__init__(message_factory)
 
         self.port = self.BASE_PORT + (self.PORT_OFFSET * (self.MAX_NODES + 1))
 
@@ -203,10 +208,7 @@ class VirtualTime(BaseSimulator):
         self.current_nodeid = None
         self._pause_time = 0
 
-        if use_message_factory:
-            self._message_factory = config.create_default_thread_message_factory()
-        else:
-            self._message_factory = None
+        self._message_factory = message_factory
 
     def __del__(self):
         if self.sock:
@@ -526,7 +528,8 @@ class VirtualTime(BaseSimulator):
 
         if len(event) == 5:
             event_time, sequence, port, type, datalen = event
-            dbg_print("Pop event: ", event_time, port, type, datalen)
+            data = b''
+            dbg_print("Pop event: ", event_time, port, type, datalen, "(no data)")
         else:
             event_time, sequence, port, type, datalen, data = event
             dbg_print(
@@ -560,6 +563,10 @@ class VirtualTime(BaseSimulator):
         elif type == self.OT_SIM_EVENT_UART_WRITE:
             message += data
             self._send_message(message, port)
+        else:
+            raise NotImplementedError(f'Unknown event type: {type}')
+
+        self.awake_devices.add(port)
 
     def sync_devices(self):
         self.current_time = self._pause_time

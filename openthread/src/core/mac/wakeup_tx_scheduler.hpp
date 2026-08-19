@@ -26,8 +26,8 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WAKEUP_TX_SCHEDULER_HPP_
-#define WAKEUP_TX_SCHEDULER_HPP_
+#ifndef OT_CORE_MAC_WAKEUP_TX_SCHEDULER_HPP_
+#define OT_CORE_MAC_WAKEUP_TX_SCHEDULER_HPP_
 
 #include "openthread-core-config.h"
 
@@ -37,6 +37,7 @@
 #include "common/non_copyable.hpp"
 #include "common/timer.hpp"
 #include "mac/mac.hpp"
+#include "radio/radio.hpp"
 
 namespace ot {
 
@@ -48,6 +49,7 @@ class Child;
 class WakeupTxScheduler : public InstanceLocator, private NonCopyable
 {
     friend class Mac::Mac;
+    friend class Radio::Callbacks;
 
 public:
     /**
@@ -60,14 +62,14 @@ public:
     /**
      * Initiates the wake-up sequence to a Wake-up End Device.
      *
-     * @param[in] aWedAddress The extended address of the Wake-up End Device.
-     * @param[in] aIntervalUs An interval between consecutive wake-up frames (in microseconds).
-     * @param[in] aDurationMs Duration of the wake-up sequence (in milliseconds).
+     * @param[in] aWakeupRequest  The wake-up request.
+     * @param[in] aIntervalUs     An interval between consecutive wake-up frames (in microseconds).
+     * @param[in] aDurationMs     Duration of the wake-up sequence (in milliseconds).
      *
      * @retval kErrorNone         Successfully started the wake-up sequence.
      * @retval kErrorInvalidState This or another device is currently being woken-up.
      */
-    Error WakeUp(const Mac::ExtAddress &aWedAddress, uint16_t aIntervalUs, uint16_t aDurationMs);
+    Error WakeUp(const Mac::WakeupRequest &aWakeupRequest, uint16_t aIntervalUs, uint16_t aDurationMs);
 
     /**
      * Returns the connection window used by this device.
@@ -95,9 +97,9 @@ public:
     void Stop(void);
 
     /**
-     * Updates the value of `mTxRequestAheadTimeUs`, based on bus speed, bus latency and `Mac::kCslRequestAhead`.
+     * Returns the wake-up request.
      */
-    void UpdateFrameRequestAhead(void);
+    const Mac::WakeupRequest &GetWakeupRequest(void) const { return mWakeupRequest; }
 
 private:
     constexpr static uint8_t  kConnectionRetryInterval = OPENTHREAD_CONFIG_WAKEUP_COORDINATOR_CONNECTION_RETRY_INTERVAL;
@@ -109,6 +111,9 @@ private:
     // Called by the MAC layer when a wake-up frame transmission is about to be started.
     Mac::TxFrame *PrepareWakeupFrame(Mac::TxFrames &aTxFrames);
 
+    // Callback from `Radio`
+    void HandleRadioBusLatencyChanged(void);
+
     // Called at the beginning of a wake-up sequence and right after a wake-up frame has been prepared for transmission.
     void ScheduleTimer(void);
 
@@ -116,17 +121,17 @@ private:
 
     using WakeupTimer = TimerMicroIn<WakeupTxScheduler, &WakeupTxScheduler::RequestWakeupFrameTransmission>;
 
-    Mac::ExtAddress mWedAddress;
-    TimeMicro       mTxTimeUs;             // Point in time when the next TX occurs.
-    TimeMicro       mTxEndTimeUs;          // Point in time when the wake-up sequence is over.
-    uint16_t        mTxRequestAheadTimeUs; // How much ahead the TX MAC operation needs to be requested.
-    uint16_t        mIntervalUs;           // Interval between consecutive wake-up frames.
-    WakeupTimer     mTimer;
-    bool            mIsRunning;
+    Mac::WakeupRequest mWakeupRequest;
+    TimeMicro          mTxTimeUs;             // Point in time when the next TX occurs.
+    TimeMicro          mTxEndTimeUs;          // Point in time when the wake-up sequence is over.
+    uint32_t           mTxRequestAheadTimeUs; // How much ahead the TX MAC operation needs to be requested.
+    uint16_t           mIntervalUs;           // Interval between consecutive wake-up frames.
+    WakeupTimer        mTimer;
+    bool               mIsRunning;
 };
 
 } // namespace ot
 
 #endif // OPENTHREAD_CONFIG_WAKEUP_COORDINATOR_ENABLE
 
-#endif // WAKEUP_TX_SCHEDULER_HPP_
+#endif // OT_CORE_MAC_WAKEUP_TX_SCHEDULER_HPP_

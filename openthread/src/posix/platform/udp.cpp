@@ -293,7 +293,10 @@ otError otPlatUdpBind(otUdpSocket *aUdpSocket)
 exit:
     if (error == OT_ERROR_FAILED)
     {
-        ot::Posix::Udp::LogCrit("Failed to bind UDP socket: %s", strerror(errno));
+        int err = errno;
+        ot::Posix::Udp::LogWarn("Failed to bind UDP socket to [%s]:%u: %s",
+                                Ip6AddressString(&aUdpSocket->mSockName.mAddress).AsCString(),
+                                aUdpSocket->mSockName.mPort, strerror(err));
     }
 
     return error;
@@ -420,12 +423,13 @@ otError otPlatUdpConnect(otUdpSocket *aUdpSocket)
 
     if (connect(fd, reinterpret_cast<struct sockaddr *>(&sin6), sizeof(sin6)) != 0)
     {
+        int err = errno;
 #ifdef __APPLE__
-        VerifyOrExit(errno == EAFNOSUPPORT && isDisconnect);
+        VerifyOrExit(err == EAFNOSUPPORT && isDisconnect);
 #endif
         ot::Posix::Udp::LogWarn("Failed to connect to [%s]:%u: %s",
                                 Ip6AddressString(&aUdpSocket->mPeerName.mAddress).AsCString(),
-                                aUdpSocket->mPeerName.mPort, strerror(errno));
+                                aUdpSocket->mPeerName.mPort, strerror(err));
         error = OT_ERROR_FAILED;
     }
 
@@ -444,6 +448,7 @@ otError otPlatUdpSend(otUdpSocket *aUdpSocket, otMessage *aMessage, const otMess
     fd = FdFromHandle(aUdpSocket->mHandle);
 
     len = otMessageGetLength(aMessage);
+    VerifyOrExit(len <= sizeof(payload), error = OT_ERROR_NO_BUFS);
     VerifyOrExit(len == otMessageRead(aMessage, 0, payload, len), error = OT_ERROR_INVALID_ARGS);
 
     if (aMessageInfo->mMulticastLoop)
@@ -565,7 +570,7 @@ namespace Posix {
 
 const char Udp::kLogModuleName[] = "Udp";
 
-void Udp::Update(otSysMainloopContext &aContext)
+void Udp::Update(Mainloop::Context &aContext)
 {
     VerifyOrExit(gNetifIndex != 0);
 
@@ -579,12 +584,7 @@ void Udp::Update(otSysMainloopContext &aContext)
         }
 
         fd = FdFromHandle(socket->mHandle);
-        FD_SET(fd, &aContext.mReadFdSet);
-
-        if (aContext.mMaxFd < fd)
-        {
-            aContext.mMaxFd = fd;
-        }
+        Mainloop::AddToReadFdSet(fd, aContext);
     }
 
 exit:
@@ -626,7 +626,7 @@ Udp &Udp::Get(void)
     return sInstance;
 }
 
-void Udp::Process(const otSysMainloopContext &aContext)
+void Udp::Process(const Mainloop::Context &aContext)
 {
     otMessageSettings msgSettings = {false, OT_MESSAGE_PRIORITY_NORMAL};
 
@@ -634,7 +634,7 @@ void Udp::Process(const otSysMainloopContext &aContext)
     {
         int fd = FdFromHandle(socket->mHandle);
 
-        if (fd > 0 && FD_ISSET(fd, &aContext.mReadFdSet))
+        if (fd > 0 && Mainloop::IsFdReadable(fd, aContext))
         {
             otMessageInfo messageInfo;
             otMessage    *message = nullptr;

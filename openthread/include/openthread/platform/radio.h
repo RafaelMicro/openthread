@@ -183,6 +183,25 @@ struct otExtAddress
  */
 typedef struct otExtAddress otExtAddress;
 
+/**
+ * Represents a 64-bit radio time in microseconds referenced to a continuous monotonic local radio clock.
+ *
+ * This type is returned by `otPlatRadioGetNow()` and is used as the timestamp field (`mTimestamp`) in radio frames
+ * (`otRadioFrame`).
+ */
+typedef uint64_t otRadioTime64;
+
+/**
+ * Represents a 32-bit radio time in microseconds.
+ *
+ * This type holds the lower 32 bits (least significant bits) of a full 64-bit radio time (`otRadioTime64`).
+ *
+ * It is used in APIs such as `otPlatRadioReceiveAt()` and `otPlatRadioUpdateCslSampleTime()` and as the transmission
+ * delay base time (`mTxDelayBaseTime`) in `otRadioFrame`. It is important for radio platform implementations to
+ * correctly account for its roll-over.
+ */
+typedef uint32_t otRadioTime32;
+
 #define OT_MAC_KEY_SIZE 16 ///< Size of the MAC Key in bytes.
 
 /**
@@ -273,7 +292,7 @@ typedef struct otRadioFrame
              *
              * This field does not affect CCA behavior which is controlled by `mCsmaCaEnabled`.
              */
-            uint32_t mTxDelayBaseTime;
+            otRadioTime32 mTxDelayBaseTime;
 
             /**
              * The delay time in microseconds for this transmission referenced
@@ -359,7 +378,7 @@ typedef struct otRadioFrame
              * If `mIsHeaderUpdated` is not set, then the frame counter and key CSL IE not set in the frame by
              * OpenThread core and it is the responsibility of the radio platform to assign them. The platform
              * must update the frame header (assign counter and CSL IE values) before sending the frame over the air,
-             * however if the the transmission gets aborted and the frame is never sent over the air (e.g., channel
+             * however if the transmission gets aborted and the frame is never sent over the air (e.g., channel
              * access error) the platform may choose to not update the header. If the platform updates the header,
              * it must also set this flag before passing the frame back from the `otPlatRadioTxDone()` callback.
              */
@@ -381,7 +400,7 @@ typedef struct otRadioFrame
              *
              * The platform should update this field before otPlatRadioTxStarted() is fired for each transmit attempt.
              */
-            uint64_t mTimestamp;
+            otRadioTime64 mTimestamp;
         } mTxInfo;
 
         /**
@@ -393,7 +412,7 @@ typedef struct otRadioFrame
              * The time of the local radio clock in microseconds when the end of
              * the SFD was present at the local antenna.
              */
-            uint64_t mTimestamp;
+            otRadioTime64 mTimestamp;
 
             uint32_t mAckFrameCounter; ///< ACK security frame counter (applicable when `mAckedWithSecEnhAck` is set).
             uint8_t  mAckKeyId;        ///< ACK security key index (applicable when `mAckedWithSecEnhAck` is set).
@@ -700,17 +719,28 @@ void otPlatRadioSetPromiscuous(otInstance *aInstance, bool aEnable);
 void otPlatRadioSetRxOnWhenIdle(otInstance *aInstance, bool aEnable);
 
 /**
- * Update MAC keys and key index
+ * Update MAC keys and key index.
  *
- * Is used when radio provides OT_RADIO_CAPS_TRANSMIT_SEC capability.
+ * Is used when radio provides `OT_RADIO_CAPS_TRANSMIT_SEC` capability.
+ *
+ * Radio platform implementations MUST ignore the @p aKeyIdMode parameter entirely and treat the keys configured via
+ * this API as Key ID Mode 1 (standard Thread security).
+ *
+ * This API was originally introduced with the @p aKeyIdMode parameter for potential future extensions, and it is
+ * retained in the function signature for backward compatibility. However, in practice, platform transmit security
+ * is only intended and used for Key ID Mode 1. Attempting to support or interpret other Key ID modes in the radio
+ * platform introduces complexity and ambiguity regarding how @p aKeyIdMode values are represented (e.g.,
+ * bit-shifted as it appears in the IEEE 802.15.4 Security Control field vs. simple sequential mode values 0, 1, 2).
+ *
+ * A call to this API replaces any previously set MAC keys.
  *
  * The radio platform should reset the current security MAC frame counter tracked by the radio on this call. While this
  * is highly recommended, the OpenThread stack, as a safeguard, will also reset the frame counter using the
  * `otPlatRadioSetMacFrameCounter()` before calling this API.
  *
  * @param[in]   aInstance    A pointer to an OpenThread instance.
- * @param[in]   aKeyIdMode   The key ID mode.
- * @param[in]   aKeyId       Current MAC key index.
+ * @param[in]   aKeyIdMode   The key ID mode (must be ignored by the radio platform).
+ * @param[in]   aKeyIndex    Current MAC key index.
  * @param[in]   aPrevKey     A pointer to the previous MAC key.
  * @param[in]   aCurrKey     A pointer to the current MAC key.
  * @param[in]   aNextKey     A pointer to the next MAC key.
@@ -718,7 +748,7 @@ void otPlatRadioSetRxOnWhenIdle(otInstance *aInstance, bool aEnable);
  */
 void otPlatRadioSetMacKey(otInstance             *aInstance,
                           uint8_t                 aKeyIdMode,
-                          uint8_t                 aKeyId,
+                          uint8_t                 aKeyIndex,
                           const otMacKeyMaterial *aPrevKey,
                           const otMacKeyMaterial *aCurrKey,
                           const otMacKeyMaterial *aNextKey,
@@ -765,7 +795,7 @@ void otPlatRadioSetMacFrameCounterIfLarger(otInstance *aInstance, uint32_t aMacF
  * @returns The current time in microseconds. UINT64_MAX when platform does not
  * support or radio time is not ready.
  */
-uint64_t otPlatRadioGetNow(otInstance *aInstance);
+otRadioTime64 otPlatRadioGetNow(otInstance *aInstance);
 
 /**
  * Get the bus speed in bits/second between the host and the radio chip.
@@ -894,7 +924,7 @@ otError otPlatRadioReceive(otInstance *aInstance, uint8_t aChannel);
  * @retval OT_ERROR_NONE    Successfully scheduled receive window.
  * @retval OT_ERROR_FAILED  The receive window could not be scheduled. For example, if @p aStart is in the past.
  */
-otError otPlatRadioReceiveAt(otInstance *aInstance, uint8_t aChannel, uint32_t aStart, uint32_t aDuration);
+otError otPlatRadioReceiveAt(otInstance *aInstance, uint8_t aChannel, otRadioTime32 aStart, uint32_t aDuration);
 
 /**
  * The radio driver calls this function to notify OpenThread of a received frame.
@@ -909,6 +939,9 @@ extern void otPlatRadioReceiveDone(otInstance *aInstance, otRadioFrame *aFrame, 
 
 /**
  * The radio driver calls this function to notify OpenThread diagnostics module of a received frame.
+ *
+ * @note This function is deprecated and will be removed in the future. It is recommended to use the function
+ *       `otPlatRadioReceiveDone()`.
  *
  * Is used when diagnostics is enabled.
  *
@@ -981,6 +1014,9 @@ extern void otPlatRadioTxDone(otInstance *aInstance, otRadioFrame *aFrame, otRad
 
 /**
  * The radio driver calls this function to notify OpenThread diagnostics module that the transmission has completed.
+ *
+ * @note This function is deprecated and will be removed in the future. It is recommended to use the function
+ *       `otPlatRadioTxDone()`.
  *
  * Is used when diagnostics is enabled.
  *
@@ -1219,7 +1255,7 @@ otError otPlatRadioResetCsl(otInstance *aInstance);
  *                               the time when the first symbol of the MHR of
  *                               the frame is expected.
  */
-void otPlatRadioUpdateCslSampleTime(otInstance *aInstance, uint32_t aCslSampleTime);
+void otPlatRadioUpdateCslSampleTime(otInstance *aInstance, otRadioTime32 aCslSampleTime);
 
 /**
  * Get the current estimated worst case accuracy (maximum ± deviation from the

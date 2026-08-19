@@ -62,22 +62,21 @@ void SubMac::UpdateWakeupListening(bool aEnable, uint32_t aInterval, uint32_t aD
 
     if (aEnable)
     {
-        mWedSampleTime      = TimerMicro::GetNow() + kCslReceiveTimeAhead - mWakeupListenInterval;
-        mWedSampleTimeRadio = Get<Radio>().GetNow() + kCslReceiveTimeAhead - mWakeupListenInterval;
+        mWedSampleTime.SetToNow(Get<Radio::Radio>());
+        mWedSampleTime += kCslReceiveTimeAhead;
+        mWedSampleTime -= mWakeupListenInterval;
 
         HandleWedTimer();
     }
-    else if (!RadioSupportsReceiveTiming())
+    else if (!RadioSupports(kCapReceiveTiming))
     {
         UpdateRadioSampleState();
     }
 }
 
-void SubMac::HandleWedTimer(Timer &aTimer) { aTimer.Get<SubMac>().HandleWedTimer(); }
-
 void SubMac::HandleWedTimer(void)
 {
-    if (RadioSupportsReceiveTiming())
+    if (RadioSupports(kCapReceiveTiming))
     {
         HandleWedReceiveAt();
     }
@@ -90,13 +89,12 @@ void SubMac::HandleWedTimer(void)
 void SubMac::HandleWedReceiveAt(void)
 {
     mWedSampleTime += mWakeupListenInterval;
-    mWedSampleTimeRadio += mWakeupListenInterval;
-    mWedTimer.FireAt(mWedSampleTime + mWakeupListenDuration + kWedReceiveTimeAfter);
+
+    mWedTimer.FireAt(mWedSampleTime.GetAsLocalTimeMicro() + mWakeupListenDuration + kWedReceiveTimeAfter);
 
     if (mState != kStateDisabled)
     {
-        IgnoreError(
-            Get<Radio>().ReceiveAt(mWakeupChannel, static_cast<uint32_t>(mWedSampleTimeRadio), mWakeupListenDuration));
+        IgnoreError(Get<Radio::Radio>().ReceiveAt(mWakeupChannel, mWedSampleTime.GetAsTime32(), mWakeupListenDuration));
     }
 }
 
@@ -108,12 +106,12 @@ void SubMac::HandleWedReceiveOrSleep(void)
 
     if (mIsWedSampling)
     {
-        fireTime = mWedSampleTime + mWakeupListenDuration + kMinReceiveOnAfter;
+        fireTime = mWedSampleTime.GetAsLocalTimeMicro() + mWakeupListenDuration + kMinReceiveOnAfter;
     }
     else
     {
         mWedSampleTime += mWakeupListenInterval;
-        fireTime = mWedSampleTime - kMinReceiveOnAhead;
+        fireTime = mWedSampleTime.GetAsLocalTimeMicro() - kMinReceiveOnAhead;
     }
 
     mWedTimer.FireAt(fireTime);

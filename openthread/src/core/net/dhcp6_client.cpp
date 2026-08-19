@@ -65,7 +65,7 @@ void Client::UpdateAddresses(void)
     bool                            found          = false;
     bool                            doesAgentExist = false;
     NetworkData::Iterator           iterator;
-    NetworkData::OnMeshPrefixConfig config;
+    NetworkData::OnMeshPrefixConfig prefixConfig;
 
     // remove addresses directly if prefix not valid in network data
     for (IdentityAssociation &idAssociation : mIdentityAssociations)
@@ -78,14 +78,14 @@ void Client::UpdateAddresses(void)
         found    = false;
         iterator = NetworkData::kIteratorInit;
 
-        while (Get<NetworkData::Leader>().GetNextOnMeshPrefix(iterator, config) == kErrorNone)
+        while (Get<NetworkData::Leader>().GetNext(iterator, prefixConfig) == kErrorNone)
         {
-            if (!config.mDhcp)
+            if (!prefixConfig.mDhcp)
             {
                 continue;
             }
 
-            if (idAssociation.mNetifAddress.HasPrefix(config.GetPrefix()))
+            if (idAssociation.mNetifAddress.HasPrefix(prefixConfig.GetPrefix()))
             {
                 found = true;
                 break;
@@ -102,11 +102,11 @@ void Client::UpdateAddresses(void)
     // add IdentityAssociation for new configured prefix
     iterator = NetworkData::kIteratorInit;
 
-    while (Get<NetworkData::Leader>().GetNextOnMeshPrefix(iterator, config) == kErrorNone)
+    while (Get<NetworkData::Leader>().GetNext(iterator, prefixConfig) == kErrorNone)
     {
         IdentityAssociation *idAssociation = nullptr;
 
-        if (!config.mDhcp)
+        if (!prefixConfig.mDhcp)
         {
             continue;
         }
@@ -124,7 +124,7 @@ void Client::UpdateAddresses(void)
                     idAssociation = &ia;
                 }
             }
-            else if (ia.mNetifAddress.HasPrefix(config.GetPrefix()))
+            else if (ia.mNetifAddress.HasPrefix(prefixConfig.GetPrefix()))
             {
                 found         = true;
                 idAssociation = &ia;
@@ -136,8 +136,8 @@ void Client::UpdateAddresses(void)
         {
             if (idAssociation != nullptr)
             {
-                idAssociation->mNetifAddress.mAddress      = config.mPrefix.mPrefix;
-                idAssociation->mNetifAddress.mPrefixLength = config.mPrefix.mLength;
+                idAssociation->mNetifAddress.mAddress      = prefixConfig.mPrefix.mPrefix;
+                idAssociation->mNetifAddress.mPrefixLength = prefixConfig.mPrefix.mLength;
                 idAssociation->mStatus                     = kIaStatusSolicit;
                 idAssociation->mValidLifetime              = 0;
             }
@@ -148,7 +148,7 @@ void Client::UpdateAddresses(void)
             }
         }
 
-        idAssociation->mPrefixAgentRloc = config.mRloc16;
+        idAssociation->mPrefixAgentRloc = prefixConfig.mRloc16;
     }
 
     if (doesAgentExist)
@@ -266,9 +266,9 @@ void Client::Solicit(uint16_t aRloc16)
     SuccessOrExit(error = AppendRapidCommitOption(*message));
 
 #if OPENTHREAD_ENABLE_DHCP6_MULTICAST_SOLICIT
-    messageInfo.GetPeerAddr().SetToRealmLocalAllRoutersMulticast();
+    messageInfo.SetPeerAddr(Ip6::Address::GetRealmLocalAllRoutersMulticast());
 #else
-    messageInfo.GetPeerAddr().SetToRoutingLocator(Get<Mle::Mle>().GetMeshLocalPrefix(), aRloc16);
+    Get<Mle::Mle>().ComposeRloc(aRloc16, messageInfo.GetPeerAddr());
 #endif
     messageInfo.SetSockAddr(Get<Mle::Mle>().GetMeshLocalRloc());
     messageInfo.mPeerPort = kDhcpServerPort;
@@ -307,7 +307,7 @@ Error Client::AppendClientIdOption(Message &aMessage)
 {
     Mac::ExtAddress eui64;
 
-    Get<Radio>().GetIeeeEui64(eui64);
+    Get<Radio::Radio>().GetIeeeEui64(eui64);
 
     return ClientIdOption::AppendWithEui64Duid(aMessage, eui64);
 }
@@ -358,8 +358,7 @@ void Client::HandleUdpReceive(Message &aMessage, const Ip6::MessageInfo &aMessag
 
     Header header;
 
-    SuccessOrExit(aMessage.Read(aMessage.GetOffset(), header));
-    aMessage.MoveOffset(sizeof(header));
+    SuccessOrExit(aMessage.ReadAtAndAdvanceOffset(header));
 
     if ((header.GetMsgType() == kMsgTypeReply) && (header.GetTransactionId() == mTransactionId))
     {
@@ -395,7 +394,7 @@ Error Client::ProcessClientIdOption(const Message &aMessage)
 {
     Mac::ExtAddress eui64;
 
-    Get<Radio>().GetIeeeEui64(eui64);
+    Get<Radio::Radio>().GetIeeeEui64(eui64);
 
     return ClientIdOption::MatchesEui64Duid(aMessage, eui64);
 }
@@ -408,9 +407,7 @@ Error Client::ProcessIaNaOption(const Message &aMessage)
     Option::Iterator iterator;
 
     SuccessOrExit(error = Option::FindOption(aMessage, Option::kIaNa, offsetRange));
-    SuccessOrExit(error = aMessage.Read(offsetRange, option));
-
-    offsetRange.AdvanceOffset(sizeof(IaNaOption));
+    SuccessOrExit(error = aMessage.ReadAndAdvance(offsetRange, option));
 
     // Iterate over and check the sub-options within `IaNaOption`.
 

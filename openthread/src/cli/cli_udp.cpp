@@ -144,7 +144,7 @@ template <> otError UdpExample::Process<Cmd("connect")>(Arg aArgs[])
     otSockAddr sockaddr;
     bool       nat64Synth;
 
-    SuccessOrExit(error = ParseToIp6Address(GetInstancePtr(), aArgs[0], sockaddr.mAddress, nat64Synth));
+    SuccessOrExit(error = ParseOrSynthesizeIp6Address(aArgs[0], sockaddr.mAddress, nat64Synth));
 
     if (nat64Synth)
     {
@@ -281,7 +281,7 @@ template <> otError UdpExample::Process<Cmd("send")>(Arg aArgs[])
     {
         bool nat64Synth;
 
-        SuccessOrExit(error = ParseToIp6Address(GetInstancePtr(), aArgs[0], messageInfo.mPeerAddr, nat64Synth));
+        SuccessOrExit(error = ParseOrSynthesizeIp6Address(aArgs[0], messageInfo.mPeerAddr, nat64Synth));
 
         if (nat64Synth)
         {
@@ -433,10 +433,7 @@ exit:
 
 otError UdpExample::Process(Arg aArgs[])
 {
-#define CmdEntry(aCommandString)                                  \
-    {                                                             \
-        aCommandString, &UdpExample::Process<Cmd(aCommandString)> \
-    }
+#define CmdEntry(aCommandString) {aCommandString, &UdpExample::Process<Cmd(aCommandString)>}
 
     static constexpr Command kCommands[] = {
         CmdEntry("bind"),         CmdEntry("close"), CmdEntry("connect"),

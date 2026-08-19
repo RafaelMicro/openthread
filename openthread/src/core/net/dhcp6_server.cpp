@@ -61,10 +61,9 @@ void Server::HandleNotifierEvents(Events aEvents)
 
 void Server::UpdateService(void)
 {
-    Error                           error  = kErrorNone;
     uint16_t                        rloc16 = Get<Mle::Mle>().GetRloc16();
     NetworkData::Iterator           iterator;
-    NetworkData::OnMeshPrefixConfig config;
+    NetworkData::OnMeshPrefixConfig prefixConfig;
     Lowpan::Context                 lowpanContext;
 
     // remove dhcp agent aloc and prefix delegation
@@ -79,16 +78,16 @@ void Server::UpdateService(void)
 
         iterator = NetworkData::kIteratorInit;
 
-        while (Get<NetworkData::Leader>().GetNextOnMeshPrefix(iterator, rloc16, config) == kErrorNone)
+        while (Get<NetworkData::Leader>().GetNext(iterator, rloc16, prefixConfig) == kErrorNone)
         {
-            if (!(config.mDhcp || config.mConfigure))
+            if (!(prefixConfig.mDhcp || prefixConfig.mConfigure))
             {
                 continue;
             }
 
-            error = Get<NetworkData::Leader>().GetContext(prefixAgent.GetPrefixAsAddress(), lowpanContext);
+            Get<NetworkData::Leader>().FindContextForAddress(prefixAgent.GetPrefixAsAddress(), lowpanContext);
 
-            if ((error == kErrorNone) && (prefixAgent.GetContextId() == lowpanContext.mContextId))
+            if (lowpanContext.MatchesContextId(prefixAgent.GetContextId()))
             {
                 // still in network data
                 found = true;
@@ -107,18 +106,18 @@ void Server::UpdateService(void)
     // add dhcp agent aloc and prefix delegation
     iterator = NetworkData::kIteratorInit;
 
-    while (Get<NetworkData::Leader>().GetNextOnMeshPrefix(iterator, rloc16, config) == kErrorNone)
+    while (Get<NetworkData::Leader>().GetNext(iterator, rloc16, prefixConfig) == kErrorNone)
     {
-        if (!(config.mDhcp || config.mConfigure))
+        if (!(prefixConfig.mDhcp || prefixConfig.mConfigure))
         {
             continue;
         }
 
-        error = Get<NetworkData::Leader>().GetContext(AsCoreType(&config.mPrefix.mPrefix), lowpanContext);
+        Get<NetworkData::Leader>().FindContextForAddress(AsCoreType(&prefixConfig.mPrefix.mPrefix), lowpanContext);
 
-        if (error == kErrorNone)
+        if (lowpanContext.IsValid())
         {
-            AddPrefixAgent(config.GetPrefix(), lowpanContext);
+            AddPrefixAgent(prefixConfig.GetPrefix(), lowpanContext.GetContextId());
         }
     }
 
@@ -145,7 +144,7 @@ exit:
 
 void Server::Stop(void) { IgnoreError(mSocket.Close()); }
 
-void Server::AddPrefixAgent(const Ip6::Prefix &aIp6Prefix, const Lowpan::Context &aContext)
+void Server::AddPrefixAgent(const Ip6::Prefix &aIp6Prefix, uint8_t aContextId)
 {
     Error        error    = kErrorNone;
     PrefixAgent *newEntry = nullptr;
@@ -165,7 +164,8 @@ void Server::AddPrefixAgent(const Ip6::Prefix &aIp6Prefix, const Lowpan::Context
 
     VerifyOrExit(newEntry != nullptr, error = kErrorNoBufs);
 
-    newEntry->Set(aIp6Prefix, Get<Mle::Mle>().GetMeshLocalPrefix(), aContext.mContextId);
+    newEntry->SetPrefix(aIp6Prefix);
+    newEntry->ComposeAloc(GetInstance(), aContextId);
     Get<ThreadNetif>().AddUnicastAddress(newEntry->GetAloc());
     mPrefixAgentsCount++;
 
@@ -178,8 +178,7 @@ void Server::HandleUdpReceive(Message &aMessage, const Ip6::MessageInfo &aMessag
 {
     Header header;
 
-    SuccessOrExit(aMessage.Read(aMessage.GetOffset(), header));
-    aMessage.MoveOffset(sizeof(header));
+    SuccessOrExit(aMessage.ReadAtAndAdvanceOffset(header));
 
     VerifyOrExit((header.GetMsgType() == kMsgTypeSolicit));
 
@@ -245,11 +244,9 @@ Error Server::ProcessIaNaOption(const Message &aMessage, uint32_t &aIaid)
     Option::Iterator iterator;
 
     SuccessOrExit(error = Option::FindOption(aMessage, Option::kIaNa, offsetRange));
-    SuccessOrExit(error = aMessage.Read(offsetRange, iaNaOption));
+    SuccessOrExit(error = aMessage.ReadAndAdvance(offsetRange, iaNaOption));
 
     aIaid = iaNaOption.GetIaid();
-
-    offsetRange.AdvanceOffset(sizeof(IaNaOption));
 
     mPrefixAgentsMask = 0;
 
@@ -326,7 +323,7 @@ Error Server::AppendServerIdOption(Message &aMessage)
 {
     Mac::ExtAddress eui64;
 
-    Get<Radio>().GetIeeeEui64(eui64);
+    Get<Radio::Radio>().GetIeeeEui64(eui64);
 
     return ServerIdOption::AppendWithEui64Duid(aMessage, eui64);
 }
@@ -406,13 +403,19 @@ Error Server::AppendIaAddressOption(Message               &aMessage,
 
     option.Init();
     option.GetAddress().SetPrefix(aPrefix.mFields.m8, OT_IP6_PREFIX_BITSIZE);
-    option.GetAddress().GetIid().SetFromExtAddress(aClientAddress);
+    option.GetAddress().GetIid().InitFromExtAddress(aClientAddress);
     option.SetPreferredLifetime(IaAddressOption::kDefaultPreferredLifetime);
     option.SetValidLifetime(IaAddressOption::kDefaultValidLifetime);
     SuccessOrExit(error = aMessage.Append(option));
 
 exit:
     return error;
+}
+
+void Server::PrefixAgent::ComposeAloc(Instance &aInstance, uint8_t aContextId)
+{
+    mAloc.InitAsThreadOriginMeshLocal();
+    aInstance.Get<Mle::Mle>().ComposeAloc((Ip6::Address::kAloc16Mask << 8) + aContextId, mAloc.GetAddress());
 }
 
 } // namespace Dhcp6
