@@ -36,7 +36,6 @@
 
 #include "soft_source_match_table.h"
 #include "openthread_port.h"
-#include <stdlib.h>
 #include <string.h>
 
 // #include "common/logging.hpp"

@@ -9,13 +9,10 @@
  * 
  */
 
-#include <openthread/platform/entropy.h>
 
 #include <openthread/platform/radio.h>
 
 #include "code_utils.h"
-#include "log.h"
-#include "mcu.h"
 #include "hosal_trng.h"
 
 extern uint32_t otPlatAlarmMilliGetNow(void);
