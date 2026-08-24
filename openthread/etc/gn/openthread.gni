@@ -56,7 +56,7 @@ declare_args() {
   openthread_package_name = "OPENTHREAD"
 
   # Package version for OpenThread.
-  openthread_package_version = "1.0.0"
+  openthread_package_version = "baf13fc99"
 }
 
 declare_args() {
