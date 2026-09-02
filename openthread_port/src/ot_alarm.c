@@ -207,18 +207,20 @@ uint64_t otPlatTimeGet(void) {
     static uint32_t prev32Time = 0U;
     uint32_t now32Time;
     uint64_t now64Time;
+    enter_critical_section();
 #if (OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE == 1)
     now32Time = otPlatAlarmMicroGetNow();
 #else
     now32Time = otPlatAlarmMilliGetNow();
 #endif
-    enter_critical_section();
+    
     if (now32Time < prev32Time) {
         timerWraps += 1U;
     }
     prev32Time = now32Time;
-    leave_critical_section();
+    
     now64Time = ((uint64_t)timerWraps << 32) + now32Time;
+    leave_critical_section();
 
     return now64Time;
 }
