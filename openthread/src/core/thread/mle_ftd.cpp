@@ -630,6 +630,66 @@ exit:
     FreeMessageOnError(message, error);
 }
 
+Error Mle::RequestRouterLink(uint16_t aRloc16)
+{
+    Error   error  = kErrorNotFound;
+    Router *router = mRouterTable.FindRouterByRloc16(aRloc16);
+
+    VerifyOrExit(router != nullptr);
+
+    router->SetState(Neighbor::kStateLinkRequest);
+    router->ClearLinkAcceptTimeout();
+    SendLinkRequest(router);
+    error = kErrorNone;
+
+exit:
+    return error;
+}
+
+Error Mle::RepairCasePath(void)
+{
+    Error    error = kErrorNone;
+    uint16_t nextHopRloc16;
+    Router  *router = nullptr;
+
+    VerifyOrExit(IsAttached() && IsRouterOrLeader(), error = kErrorInvalidState);
+
+    // The next hop towards the Leader is the link the gateway traffic is
+    // actually using: the Leader/Border Router itself when adjacent, or a
+    // relay router when it is further away.
+    nextHopRloc16 = mRouterTable.GetNextHop(GetLeaderRloc16());
+
+    if (!IsRouterRloc16(nextHopRloc16) || HasRloc16(nextHopRloc16))
+    {
+        // No usable next hop (all router links degraded, e.g. during a
+        // prolonged interference window). The Leader's router entry is still
+        // present and carries its extended address, and a MLE Link Request
+        // travels to that link-local address without consulting the routing
+        // table - so fall back to targeting the Leader itself.
+        nextHopRloc16 = GetLeaderRloc16();
+    }
+
+    router = mRouterTable.FindRouterByRloc16(nextHopRloc16);
+    VerifyOrExit(router != nullptr, error = kErrorNotFound);
+
+    if (router->IsStateValid())
+    {
+        // Suspected "fake valid" entry: it is continuously refreshed by the
+        // neighbor's multicast Advertisements while our unicast traffic
+        // towards it is being dropped on the peer side (peer's entry is
+        // Invalid). Remove the entry first: this stops the black-holed data
+        // transmissions towards it and also re-enables the automatic
+        // Advertisement-triggered link request path.
+        LogInfo("RepairCasePath: aging valid router 0x%04x entry before link request", nextHopRloc16);
+        RemoveNeighbor(*router);
+    }
+
+    error = RequestRouterLink(nextHopRloc16);
+
+exit:
+    return error;
+}
+
 void Mle::HandleLinkRequest(RxInfo &aRxInfo)
 {
     Error          error    = kErrorNone;

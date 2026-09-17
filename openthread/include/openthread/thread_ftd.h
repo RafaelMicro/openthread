@@ -482,6 +482,26 @@ otError otThreadBecomeRouter(otInstance *aInstance);
 otError otThreadBecomeLeader(otInstance *aInstance);
 
 /**
+ * Actively repairs the link along the path to the Leader, instead of waiting for the
+ * passive age-based Router Table maintenance (up to 100 seconds) to notice and recover
+ * from it.
+ *
+ * Intended to be triggered by an application-layer signal that the current path to the
+ * Leader/Border Router is broken in a way the existing Router Table maintenance cannot
+ * see on its own - e.g. repeated CASE session failures while the local Neighbor Table
+ * still reports the next hop as valid. Resolves the next hop towards the Leader and, if
+ * that entry looks falsely healthy, invalidates it before issuing an out-of-cycle MLE
+ * Link Request to it.
+ *
+ * @param[in]  aInstance A pointer to an OpenThread instance.
+ *
+ * @retval OT_ERROR_NONE           Successfully looked up a next hop and issued a Link Request.
+ * @retval OT_ERROR_INVALID_STATE  This device is not attached, or not a Router/Leader.
+ * @retval OT_ERROR_NOT_FOUND      No Router Table entry exists for the resolved next hop.
+ */
+otError otThreadRepairCasePath(otInstance *aInstance);
+
+/**
  * Get the ROUTER_DOWNGRADE_THRESHOLD parameter used in the Router role.
  *
  * @param[in]  aInstance  A pointer to an OpenThread instance.

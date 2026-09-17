@@ -1020,6 +1020,30 @@ public:
     void RemoveRouterLink(Router &aRouter);
 
     /**
+     * Actively repairs the link along the path to the Leader, instead of waiting for the
+     * passive `HandleTimeTick()` age-based detection (up to `kMaxNeighborAge` = 100s) to
+     * notice and recover from it.
+     *
+     * Intended to be triggered by an application-layer signal that the current path to the
+     * Leader/Border-Router is broken in a way the existing Router Table maintenance paths
+     * cannot see - e.g. repeated CASE session failures while the local Neighbor Table still
+     * reports the next hop as `Valid` (see docs/thread_router_neighbor_table_maintain.md,
+     * section 4.1, for the "unidirectional reachability blind spot" this works around).
+     *
+     * Resolves the next hop towards the Leader, and if that entry is still marked `Valid`
+     * (which is the failure signature this method targets - continuously refreshed by the
+     * neighbor's multicast Advertisements while our unicast traffic towards it is silently
+     * dropped), invalidates it first via `RemoveNeighbor()` so the entry does not look
+     * falsely healthy afterwards, then immediately issues an out-of-cycle Link Request via
+     * `RequestRouterLink()`.
+     *
+     * @retval kErrorNone           Successfully looked up a next hop and issued a Link Request.
+     * @retval kErrorInvalidState   This device is not attached, or not a Router/Leader.
+     * @retval kErrorNotFound       No Router Table entry exists for the resolved next hop.
+     */
+    Error RepairCasePath(void);
+
+    /**
      * Indicates whether or not the given Thread partition attributes are preferred.
      *
      * @param[in]  aSingletonA   Whether or not the Thread Partition A has a single router.
@@ -2076,6 +2100,11 @@ private:
     void     SendMulticastAdvertisement(void);
     void     SendAdvertisement(const Ip6::Address &aDestination);
     void     SendLinkRequest(Router *aRouter);
+    // Bypasses the `kMaxNeighborAge` age gate: looks up `aRloc16` in the Router Table and,
+    // if found, immediately issues a Link Request to it via `SendLinkRequest()`. Used by the
+    // public `RepairCasePath()` entry point; kept private since it has no age/attempt-count
+    // bookkeeping of its own and is only meant to be called from a controlled internal path.
+    Error    RequestRouterLink(uint16_t aRloc16);
     Error    SendLinkAccept(const LinkAcceptInfo &aInfo);
     void     SendParentResponse(const ParentResponseInfo &aInfo);
     Error    SendChildIdResponse(Child &aChild);

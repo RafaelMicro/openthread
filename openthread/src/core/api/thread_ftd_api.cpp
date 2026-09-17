@@ -184,6 +184,11 @@ otError otThreadBecomeLeader(otInstance *aInstance)
     return AsCoreType(aInstance).Get<Mle::Mle>().BecomeLeader(/* aCheckWeight */ true);
 }
 
+otError otThreadRepairCasePath(otInstance *aInstance)
+{
+    return AsCoreType(aInstance).Get<Mle::Mle>().RepairCasePath();
+}
+
 uint8_t otThreadGetRouterDowngradeThreshold(otInstance *aInstance)
 {
     return AsCoreType(aInstance).Get<Mle::Mle>().GetRouterDowngradeThreshold();
