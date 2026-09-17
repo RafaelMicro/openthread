@@ -1040,6 +1040,7 @@ public:
      * @retval kErrorNone           Successfully looked up a next hop and issued a Link Request.
      * @retval kErrorInvalidState   This device is not attached, or not a Router/Leader.
      * @retval kErrorNotFound       No Router Table entry exists for the resolved next hop.
+     * @retval kErrorAlready        A Link Request to the resolved next hop is already in flight or pending.
      */
     Error RepairCasePath(void);
 

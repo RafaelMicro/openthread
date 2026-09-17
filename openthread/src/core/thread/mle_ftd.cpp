@@ -637,6 +637,13 @@ Error Mle::RequestRouterLink(uint16_t aRloc16)
 
     VerifyOrExit(router != nullptr);
 
+    // Do not overlap with a Link Request which is already in flight or still
+    // pending: `SendLinkRequest()` regenerates the challenge and stores it in
+    // the router entry, so the Link Accept answering the earlier request would
+    // no longer match and would be dropped as a security error.
+    VerifyOrExit(!router->IsWaitingForLinkAccept() && !mDelayedSender.HasAnyScheduledLinkRequest(*router),
+                 error = kErrorAlready);
+
     router->SetState(Neighbor::kStateLinkRequest);
     router->ClearLinkAcceptTimeout();
     SendLinkRequest(router);
