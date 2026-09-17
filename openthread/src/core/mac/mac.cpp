@@ -1854,6 +1854,9 @@ void Mac::HandleReceivedFrame(RxFrame *aFrame, Error aError)
     Neighbor *neighbor;
     Error     error            = aError;
     bool      isFrameValidated = false;
+#if OPENTHREAD_FTD && OPENTHREAD_CONFIG_MLE_LINK_REQUEST_ON_UNKNOWN_NEIGHBOR_ENABLE
+    uint16_t unknownShortSrc = kShortAddrInvalid;
+#endif
 
     mCounters.mRxTotal++;
 
@@ -1910,7 +1913,15 @@ void Mac::HandleReceivedFrame(RxFrame *aFrame, Error aError)
     case Address::kTypeShort:
         LogDebg("Received frame from short address 0x%04x", srcaddr.GetShort());
 
-        VerifyOrExit(neighbor != nullptr, error = kErrorUnknownNeighbor);
+        if (neighbor == nullptr)
+        {
+#if OPENTHREAD_FTD && OPENTHREAD_CONFIG_MLE_LINK_REQUEST_ON_UNKNOWN_NEIGHBOR_ENABLE
+            // Remember the source for `Mle` to try to repair the link
+            // with it.
+            unknownShortSrc = srcaddr.GetShort();
+#endif
+            ExitNow(error = kErrorUnknownNeighbor);
+        }
 
         srcaddr.SetExtended(neighbor->GetExtAddress());
 
@@ -2120,6 +2131,12 @@ exit:
 
         case kErrorUnknownNeighbor:
             mCounters.mRxErrUnknownNeighbor++;
+#if OPENTHREAD_FTD && OPENTHREAD_CONFIG_MLE_LINK_REQUEST_ON_UNKNOWN_NEIGHBOR_ENABLE
+            if (unknownShortSrc != kShortAddrInvalid)
+            {
+                Get<Mle::Mle>().NoteRxFromUnknownNeighbor(unknownShortSrc);
+            }
+#endif
             break;
 
         case kErrorInvalidSourceAddress:

@@ -214,6 +214,22 @@
 #endif
 
 /**
+ * @def OPENTHREAD_CONFIG_MLE_LINK_REQUEST_ON_UNKNOWN_NEIGHBOR_ENABLE
+ *
+ * Enables sending an MLE Link Request to a neighboring router after receiving a frame from it which was dropped
+ * because it is not a known neighbor.
+ *
+ * The neighbor tables of two routers can become asymmetric: we may have removed a router from our neighbor table
+ * while it still considers us a valid neighbor and keeps forwarding frames to us using its RLOC16. Such frames are
+ * dropped with `kErrorUnknownNeighbor`, but since the radio acknowledges them in hardware, the sender observes a
+ * successful transmission and never tears down the link. This feature detects this situation and tries to
+ * re-establish the link with the sender.
+ */
+#ifndef OPENTHREAD_CONFIG_MLE_LINK_REQUEST_ON_UNKNOWN_NEIGHBOR_ENABLE
+#define OPENTHREAD_CONFIG_MLE_LINK_REQUEST_ON_UNKNOWN_NEIGHBOR_ENABLE 1
+#endif
+
+/**
  * @def OPENTHREAD_CONFIG_MLE_PARTITION_MERGE_MARGIN_MIN
  *
  * Specifies the minimum link margin in dBm required before attempting to merge to a different partition.

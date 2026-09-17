@@ -1051,6 +1051,18 @@ public:
      */
     void ScheduleUnicastAdvertisementTo(const Router &aRouter);
 
+#if OPENTHREAD_CONFIG_MLE_LINK_REQUEST_ON_UNKNOWN_NEIGHBOR_ENABLE
+    /**
+     * Notes that a received frame was dropped because its short source address does not match any known neighbor.
+     *
+     * Called from the MAC receive path on an unauthenticated frame, so it only records the Router ID. The link
+     * repair itself is attempted later from `HandleTimeTick()`.
+     *
+     * @param[in] aRloc16  The short source address of the dropped frame.
+     */
+    void NoteRxFromUnknownNeighbor(uint16_t aRloc16);
+#endif
+
 #if OPENTHREAD_CONFIG_MLE_STEERING_DATA_SET_OOB_ENABLE
     /**
      * Sets steering data out of band
@@ -1270,6 +1282,11 @@ private:
     static constexpr uint8_t  kLeaderDowngradeExtraDelay     = 10;  // Extra delay to downgrade leader (in sec).
     static constexpr uint8_t  kDefaultLeaderWeight           = 64;
     static constexpr uint8_t  kAlternateRloc16Timeout        = 8; // Time to use alternate RLOC16 (in sec).
+
+#if OPENTHREAD_CONFIG_MLE_LINK_REQUEST_ON_UNKNOWN_NEIGHBOR_ENABLE
+    // Interval (in sec) after which every router send Link Requests to repair a link with an unknown neighbor
+    static constexpr uint8_t kUnknownNeighborAttemptsResetInterval = 30;
+#endif
 
     // Threshold to accept a router upgrade request with reason
     // `kBorderRouterRequest` (number of BRs acting as router in
@@ -2084,6 +2101,9 @@ private:
     bool     HasChildren(void);
     void     RemoveChildren(void);
     bool     ShouldDowngrade(uint8_t aNeighborId, const RouteTlv &aRouteTlv) const;
+#if OPENTHREAD_CONFIG_MLE_LINK_REQUEST_ON_UNKNOWN_NEIGHBOR_ENABLE
+    void     RepairLinksWithUnknownNeighbors(void);
+#endif
     bool     NeighborHasComparableConnectivity(const RouteTlv &aRouteTlv, uint8_t aNeighborId) const;
     void     HandleAdvertiseTrickleTimer(void);
     void     HandleAddressSolicitResponse(Coap::Message *aMessage, const Ip6::MessageInfo *aMessageInfo, Error aResult);
@@ -2228,6 +2248,12 @@ private:
     MeshCoP::SteeringData mSteeringData;
 #endif
     Callback<otThreadDiscoveryRequestCallback> mDiscoveryRequestCallback;
+
+#if OPENTHREAD_CONFIG_MLE_LINK_REQUEST_ON_UNKNOWN_NEIGHBOR_ENABLE
+    RouterIdSet mUnknownNeighborRouterIds;
+    RouterIdSet mUnknownNeighborAttemptedRouterIds;
+    uint8_t     mUnknownNeighborAttemptsResetTimer;
+#endif
 
 #endif // OPENTHREAD_FTD
 };

@@ -74,6 +74,10 @@ void Mle::HandlePartitionChange(void)
     Get<AddressResolver>().Clear();
     IgnoreError(Get<Tmf::Agent>().AbortTransaction(&Mle::HandleAddressSolicitResponse, this));
     mRouterTable.Clear();
+#if OPENTHREAD_CONFIG_MLE_LINK_REQUEST_ON_UNKNOWN_NEIGHBOR_ENABLE
+    mUnknownNeighborRouterIds.Clear();
+    mUnknownNeighborAttemptedRouterIds.Clear();
+#endif
 }
 
 bool Mle::IsRouterEligible(void) const
@@ -1543,6 +1547,10 @@ void Mle::HandleTimeTick(void)
         }
     }
 
+#if OPENTHREAD_CONFIG_MLE_LINK_REQUEST_ON_UNKNOWN_NEIGHBOR_ENABLE
+    RepairLinksWithUnknownNeighbors();
+#endif
+
     //- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     // Role transitions
 
@@ -1761,6 +1769,122 @@ void Mle::HandleTimeTick(void)
 exit:
     return;
 }
+
+#if OPENTHREAD_CONFIG_MLE_LINK_REQUEST_ON_UNKNOWN_NEIGHBOR_ENABLE
+
+void Mle::NoteRxFromUnknownNeighbor(uint16_t aRloc16)
+{
+
+    VerifyOrExit(IsRouterOrLeader());
+
+    if (!IsRouterRloc16(aRloc16))
+    {
+        LogDebg("Rx from unknown child 0x%04x", aRloc16);
+        ExitNow();
+    }
+
+    VerifyOrExit(!HasMatchingRouterIdWith(aRloc16));
+
+    mUnknownNeighborRouterIds.Add(RouterIdFromRloc16(aRloc16));
+
+exit:
+    return;
+}
+
+void Mle::RepairLinksWithUnknownNeighbors(void)
+{
+    // Tries to re-establish the link with every router we received a
+    // frame from since the previous time tick which was dropped as
+    // being from an unknown neighbor.
+    //
+    // This happens when the neighbor tables of two routers become
+    // asymmetric: the sender still has us as a valid neighbor and,
+    // since its frames are acknowledged by the radio itself, it never
+    // detects that we drop all of them.
+
+    Mac::ExtAddress zeroExtAddress;
+
+    if (!IsRouterOrLeader())
+    {
+        // The recorded Router IDs are only meaningful while we are a
+        // router, and they would be stale by the time we become one
+        // again.
+
+        mUnknownNeighborRouterIds.Clear();
+        mUnknownNeighborAttemptedRouterIds.Clear();
+        ExitNow();
+    }
+
+    if (mUnknownNeighborAttemptsResetTimer == 0)
+    {
+        mUnknownNeighborAttemptedRouterIds.Clear();
+        mUnknownNeighborAttemptsResetTimer = kUnknownNeighborAttemptsResetInterval;
+    }
+    else
+    {
+        mUnknownNeighborAttemptsResetTimer--;
+    }
+
+    zeroExtAddress.Clear();
+
+    for (uint8_t routerId = 0; routerId <= kMaxRouterId; routerId++)
+    {
+        Router *router;
+
+        if (!mUnknownNeighborRouterIds.Contains(routerId))
+        {
+            continue;
+        }
+
+        mUnknownNeighborRouterIds.Remove(routerId);
+
+        router = mRouterTable.FindRouterById(routerId);
+
+        if ((router == nullptr) || router->IsStateValid() || router->IsStateLinkRequest() ||
+            router->IsWaitingForLinkAccept() || mDelayedSender.HasAnyScheduledLinkRequest(*router))
+        {
+            continue;
+        }
+
+        // The Link Request is unicast to the router's link-local
+        // address, so we can only send it if we still remember its
+        // extended address.
+
+        if (router->GetExtAddress() == zeroExtAddress)
+        {
+            continue;
+        }
+
+        // The `mLinkRequestAttempts` counter is shared with the stale
+        // router link recovery in `HandleTimeTick()`, but that one only
+        // acts on routers in valid state, which we skipped above.
+
+        if (!mUnknownNeighborAttemptedRouterIds.Contains(routerId))
+        {
+            mUnknownNeighborAttemptedRouterIds.Add(routerId);
+            router->SetLinkRequestAttemptsToMax();
+        }
+
+        if (!router->HasRemainingLinkRequestAttempts())
+        {
+            continue;
+        }
+
+        router->DecrementLinkRequestAttempts();
+
+        LogInfo("Rx from unknown neighbor 0x%04x - sending Link Request", router->GetRloc16());
+
+        router->SetState(Neighbor::kStateLinkRequest);
+        router->ClearLinkAcceptTimeout();
+        mDelayedSender.ScheduleLinkRequest(*router,
+                                           Random::NonCrypto::GetUint32InRange(0, kMaxLinkRequestDelayOnRouter));
+    }
+
+exit:
+    return;
+}
+
+#endif // OPENTHREAD_CONFIG_MLE_LINK_REQUEST_ON_UNKNOWN_NEIGHBOR_ENABLE
 
 void Mle::SendParentResponse(const ParentResponseInfo &aInfo)
 {

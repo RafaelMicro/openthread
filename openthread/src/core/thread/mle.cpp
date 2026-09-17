@@ -168,6 +168,12 @@ Mle::Mle(Instance &aInstance)
     mSteeringData.Clear();
 #endif
 
+#if OPENTHREAD_CONFIG_MLE_LINK_REQUEST_ON_UNKNOWN_NEIGHBOR_ENABLE
+    mUnknownNeighborRouterIds.Clear();
+    mUnknownNeighborAttemptedRouterIds.Clear();
+    mUnknownNeighborAttemptsResetTimer = kUnknownNeighborAttemptsResetInterval;
+#endif
+
 #endif // OPENTHREAD_FTD
 }
 
@@ -278,6 +284,10 @@ void Mle::Stop(StopMode aMode)
 
 #if OPENTHREAD_FTD
     mRouterRoleRestorer.Stop();
+#if OPENTHREAD_CONFIG_MLE_LINK_REQUEST_ON_UNKNOWN_NEIGHBOR_ENABLE
+    mUnknownNeighborRouterIds.Clear();
+    mUnknownNeighborAttemptedRouterIds.Clear();
+#endif
 #endif
 
     SetRole(kRoleDisabled);
