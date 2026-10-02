@@ -33,8 +33,9 @@
 #include "util_string.h"
 #include "cli.h"
 #include "log.h"
-#include "lpm.h"
 #include "flashctl.h"
+#include "rf_mcu_ahb.h"
+#include "hosal_lpm.h"
 //=============================================================================
 //                Private Definitions of const value
 //=============================================================================
@@ -870,6 +871,8 @@ otError otPlatRadioTransmit(otInstance *aInstance, otRadioFrame *aFrame)
             lmac15p4_channel_set((lmac154_channel_t)(sCurrentChannel - kMinChannel));
         }
     }
+    hosal_lpm_ioctrl(HOSAL_LPM_SET_POWER_LEVEL, HOSAL_LOW_POWER_LEVEL_NORMAL);
+    RfMcu_HostCtrlAhb(COMM_SUBSYSTEM_HOST_CTRL_WAKE_UP);
 #if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
     if(sCslPeriod > 0 && !aFrame->mInfo.mTxInfo.mIsHeaderUpdated)
     {
@@ -1163,7 +1166,7 @@ void ot_radioTask(ot_system_event_t trxEvent)
             txframe = otRadio_var.pTxFrame;
             otRadio_var.pTxFrame = NULL;
             otRadio_var.tstx = 0;
-            
+
             if (trxEvent & OT_SYSTEM_EVENT_RADIO_TX_DONE_NO_ACK_REQ) 
             {
                 otPlatRadioTxDone(otRadio_var.aInstance, txframe, NULL, OT_ERROR_NONE);
@@ -1269,7 +1272,7 @@ static void _TxDoneEvent(uint32_t tx_status)
             OT_NOTIFY(OT_SYSTEM_EVENT_RADIO_TX_ACKED);
             // otPlatRadioTxDone(otRadio_var.aInstance, txframe, otRadio_var.pAckFrame, OT_ERROR_NONE);
         }
-        lpm_low_power_unmask(LOW_POWER_MASK_BIT_RESERVED4);
+        hosal_lpm_ioctrl(HOSAL_LPM_SET_POWER_LEVEL, HOSAL_LOW_POWER_LEVEL_SLEEP0);
     }
     else 
     {
