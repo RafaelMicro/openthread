@@ -33,8 +33,9 @@
 #include "util_string.h"
 #include "cli.h"
 #include "log.h"
-#include "lpm.h"
 #include "flashctl.h"
+#include "rf_mcu_ahb.h"
+#include "hosal_lpm.h"
 //=============================================================================
 //                Private Definitions of const value
 //=============================================================================
@@ -854,8 +855,6 @@ otError otPlatRadioTransmit(otInstance *aInstance, otRadioFrame *aFrame)
     assert(aInstance != NULL);
     assert(aFrame != NULL);
 
-    log_info("otPlatRadioTransmit dsn %d len %d channel %d", otMacFrameGetSequence(aFrame), aFrame->mLength, aFrame->mChannel);
-
     static uint32_t tx_timerWraps = 0U, tx_prev32Time = 0U;       
 
     uint8_t tx_control = TX_CONTROL_CSMACA_MASK;
@@ -872,6 +871,8 @@ otError otPlatRadioTransmit(otInstance *aInstance, otRadioFrame *aFrame)
             lmac15p4_channel_set((lmac154_channel_t)(sCurrentChannel - kMinChannel));
         }
     }
+    hosal_lpm_ioctrl(HOSAL_LPM_SET_POWER_LEVEL, HOSAL_LOW_POWER_LEVEL_NORMAL);
+    RfMcu_HostCtrlAhb(COMM_SUBSYSTEM_HOST_CTRL_WAKE_UP);
 #if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
     if(sCslPeriod > 0 && !aFrame->mInfo.mTxInfo.mIsHeaderUpdated)
     {
@@ -1165,27 +1166,23 @@ void ot_radioTask(ot_system_event_t trxEvent)
             txframe = otRadio_var.pTxFrame;
             otRadio_var.pTxFrame = NULL;
             otRadio_var.tstx = 0;
-            
+
             if (trxEvent & OT_SYSTEM_EVENT_RADIO_TX_DONE_NO_ACK_REQ) 
             {
-                log_info("radio event: TX_DONE_NO_ACK_REQ dsn %d", otMacFrameGetSequence(txframe));
                 otPlatRadioTxDone(otRadio_var.aInstance, txframe, NULL, OT_ERROR_NONE);
             }
             if (trxEvent & OT_SYSTEM_EVENT_RADIO_TX_ACKED) 
             {
-                log_info("radio event: TX_ACKED dsn %d", otMacFrameGetSequence(txframe));
                 otPlatRadioTxDone(otRadio_var.aInstance, txframe, otRadio_var.pAckFrame, OT_ERROR_NONE);
                 // log_info_hexdump("ack", otRadio_var.pAckFrame->mPsdu, otRadio_var.pAckFrame->mLength);
             }
             if (trxEvent & OT_SYSTEM_EVENT_RADIO_TX_NO_ACK) 
             {
-                log_info("radio event: TX_NO_ACK dsn %d", otMacFrameGetSequence(txframe));
                 otPlatRadioTxDone(otRadio_var.aInstance, txframe, NULL, OT_ERROR_NO_ACK);
                 // log_warn_hexdump("Tx No ACK", txframe->mPsdu, txframe->mLength);
             }
             if (trxEvent & OT_SYSTEM_EVENT_RADIO_TX_CCA_FAIL) 
             {
-                log_info("radio event: TX_CCA_FAIL dsn %d", otMacFrameGetSequence(txframe));
                 //otPlatRadioTxDone(otRadio_var.aInstance, txframe, NULL, OT_ERROR_CHANNEL_ACCESS_FAILURE);
                 otPlatRadioTxDone(otRadio_var.aInstance, txframe, NULL, OT_ERROR_CHANNEL_ACCESS_FAILURE);
                 // log_warn_hexdump("Tx CCA Fail", txframe->mPsdu, txframe->mLength);
@@ -1208,7 +1205,6 @@ void ot_radioTask(ot_system_event_t trxEvent)
 
         if (pframe) 
         {
-            log_info("radio event: RX_DONE dsn %d len %d", otMacFrameGetSequence(&pframe->frame), pframe->frame.mLength);
             otPlatRadioReceiveDone(otRadio_var.aInstance, &pframe->frame, OT_ERROR_NONE);
 
             OT_ENTER_CRITICAL();
@@ -1224,12 +1220,12 @@ void ot_radioTask(ot_system_event_t trxEvent)
         }
         else
         {
-            log_warn("radio event: RX_DONE but empty list, dbgRxFrameNum %d", otRadio_var.dbgRxFrameNum);
+            log_warn("otRadio_var.dbgRxFrameNum %d", otRadio_var.dbgRxFrameNum);
         }
     }
     else if (trxEvent & OT_SYSTEM_EVENT_RADIO_RX_NO_BUFF) 
     {
-        log_warn("radio event: RX_NO_BUFF");
+        log_warn("no buffer");
         // otPlatRadioReceiveDone(otRadio_var.aInstance, NULL, OT_ERROR_NO_BUFS);
     }
 }
@@ -1276,7 +1272,7 @@ static void _TxDoneEvent(uint32_t tx_status)
             OT_NOTIFY(OT_SYSTEM_EVENT_RADIO_TX_ACKED);
             // otPlatRadioTxDone(otRadio_var.aInstance, txframe, otRadio_var.pAckFrame, OT_ERROR_NONE);
         }
-        lpm_low_power_unmask(LOW_POWER_MASK_BIT_RESERVED4);
+        hosal_lpm_ioctrl(HOSAL_LPM_SET_POWER_LEVEL, HOSAL_LOW_POWER_LEVEL_SLEEP0);
     }
     else 
     {

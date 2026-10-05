@@ -43,6 +43,7 @@
 #include "common/clearable.hpp"
 #include "common/encoding.hpp"
 #include "common/equatable.hpp"
+#include "common/num_utils.hpp"
 #include "common/string.hpp"
 #include "mac/mac_types.hpp"
 
@@ -91,6 +92,22 @@ public:
      * @retval kErrorInvalidArgs   The @p aPrefix length is not valid (must be `kLength`).
      */
     Error InitFrom(const Prefix &aPrefix);
+
+    /**
+     * Indicates whether or not the Network Prefix is a locally assigned Unique Local Address (ULA) prefix, i.e., a
+     * `fd00::/8` prefix.
+     *
+     * RFC 4193 defines a ULA prefix as `fc00::/7` followed by the L bit, which is set to one for a locally assigned
+     * prefix. Section 3.2 of RFC 4193 defines a Global ID generation process for locally assigned prefixes only, so
+     * `fd00::/8` is the only form a conformant generator can produce. This is what `GenerateRandomUla()` produces.
+     *
+     * Note that this is intentionally stricter than `Prefix::IsUniqueLocal()`, which matches the entire `fc00::/7`
+     * ULA range and is used to recognize prefixes advertised by other devices.
+     *
+     * @retval TRUE   If the Network Prefix is a locally assigned ULA prefix.
+     * @retval FALSE  If the Network Prefix is not a locally assigned ULA prefix.
+     */
+    bool IsLocallyAssignedUla(void) const { return m8[0] == 0xfd; }
 
 } OT_TOOL_PACKED_END;
 
@@ -217,24 +234,31 @@ public:
     bool IsEqual(const uint8_t *aPrefixBytes, uint8_t aPrefixLength) const;
 
     /**
-     * Indicates whether the prefix contains a sub-prefix.
+     * Indicates whether the prefix is covered by a given prefix.
      *
-     * @param[in] aSubPrefix  A sub-prefix.
+     * The prefix is considered covered by @p aPrefix if its length is greater than or equal to @p aPrefix's length and
+     * its leading bits match @p aPrefix. For example, `2001:db8:1:2::/64` is covered by `2001:db8:1::/48`, and any
+     * prefix is covered by `::/0`.
      *
-     * @retval TRUE   The prefix contains the @p aSubPrefix
-     * @retval FALSE  The prefix does not contains the @p aSubPrefix.
+     * @param[in] aPrefix  A prefix.
+     *
+     * @retval TRUE   The prefix is covered by @p aPrefix.
+     * @retval FALSE  The prefix is not covered by @p aPrefix.
      */
-    bool ContainsPrefix(const Prefix &aSubPrefix) const;
+    bool IsCoveredBy(const Prefix &aPrefix) const;
 
     /**
-     * Indicates whether the prefix contains a sub-prefix (given as a `NetworkPrefix`).
+     * Indicates whether the prefix is covered by a given `NetworkPrefix`.
      *
-     * @param[in] aSubPrefix  A sub-prefix (as a `NetworkPrefix`).
+     * The prefix is considered covered by @p aNetworkPrefix if its length is greater than or equal to
+     * `NetworkPrefix::kLength` (64 bits) and its leading 64 bits match @p aNetworkPrefix.
      *
-     * @retval TRUE   The prefix contains the @p aSubPrefix
-     * @retval FALSE  The prefix does not contains the @p aSubPrefix.
+     * @param[in] aNetworkPrefix  A `NetworkPrefix`.
+     *
+     * @retval TRUE   The prefix is covered by @p aNetworkPrefix.
+     * @retval FALSE  The prefix is not covered by @p aNetworkPrefix.
      */
-    bool ContainsPrefix(const NetworkPrefix &aSubPrefix) const;
+    bool IsCoveredBy(const NetworkPrefix &aNetworkPrefix) const;
 
     /**
      * Overloads operator `==` to evaluate whether or not two prefixes are equal.
@@ -268,7 +292,7 @@ public:
      *
      * @returns The size (in bytes) of the prefix.
      */
-    static uint8_t SizeForLength(uint8_t aLength) { return BytesForBitSize(aLength); }
+    static uint8_t SizeForLength(uint8_t aLength) { return Min(BytesForBitSize(aLength), kMaxSize); }
 
     /**
      * Indicates whether or not a given prefix length is valid for use as a NAT64 prefix.

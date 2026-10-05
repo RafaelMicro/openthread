@@ -191,25 +191,6 @@
 #define MBEDTLS_PLATFORM_NO_STD_FUNCTIONS
 #define MBEDTLS_ENTROPY_MAX_SOURCES 1
 
-// This build's <time.h>/time_t is not reliably available under the compile flags used for this
-// target, so avoid mbedtls/include/mbedtls/platform_time.h pulling in <time.h> at all.
-// MBEDTLS_PLATFORM_TIME_TYPE_MACRO requires MBEDTLS_HAVE_TIME to be defined (see check_config.h);
-// this does not pull in any TLS/X.509 time-validation code paths, which this build does not use.
-// mbedtls_ms_time()'s built-in implementation (library/platform_util.c) only supports POSIX or
-// Windows; this bare-metal target provides its own via MBEDTLS_PLATFORM_MS_TIME_ALT
-// (see openthread_port/crypto/platform_time_alt.c).
-#define MBEDTLS_HAVE_TIME
-#define MBEDTLS_PLATFORM_TIME_TYPE_MACRO int32_t
-#define MBEDTLS_PLATFORM_MS_TIME_ALT
-
-// This target's <time.h> does not declare time() either; route mbedtls_time() to our own
-// monotonic stand-in instead (see openthread_port/crypto/platform_time_alt.c). Declared here
-// (using the same type as MBEDTLS_PLATFORM_TIME_TYPE_MACRO) rather than relying on
-// mbedtls_time_t, which platform_time.h has not defined yet at this point.
-#include <stdint.h>
-int32_t rafael_mbedtls_time(int32_t *aTime);
-#define MBEDTLS_PLATFORM_TIME_MACRO rafael_mbedtls_time
-
 // Spans multiple lines to avoid being processed by unifdef
 #if defined(\
     MBEDTLS_USER_CONFIG_FILE)

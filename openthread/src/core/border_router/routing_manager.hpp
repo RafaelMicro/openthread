@@ -732,6 +732,7 @@ private:
         {
             kIdle,
             kPublishing,
+            kToAdvertise,
             kAdvertising,
             kDeprecating,
         };
@@ -741,6 +742,7 @@ private:
             bool Matches(const Ip6::Prefix &aPrefix) const { return mPrefix == aPrefix; }
 
             Ip6::Prefix mPrefix;
+            TimeMilli   mDeprecateTime;
             TimeMilli   mExpireTime;
         };
 

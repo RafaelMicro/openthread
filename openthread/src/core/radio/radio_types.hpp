@@ -39,6 +39,7 @@
 #include <openthread/platform/radio.h>
 
 #include "common/clearable.hpp"
+#include "common/numeric_limits.hpp"
 #include "common/string.hpp"
 #include "common/time.hpp"
 
@@ -51,10 +52,15 @@ namespace Radio {
 
 #define OT_CONFIG_RADIO_TIME_ENABLE                                                               \
     (OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE || OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE || \
-     OPENTHREAD_CONFIG_WAKEUP_END_DEVICE_ENABLE || OPENTHREAD_CONFIG_WAKEUP_COORDINATOR_ENABLE || \
-     OPENTHREAD_CONFIG_TIME_SYNC_ENABLE)
+     OPENTHREAD_CONFIG_TD_WAKE_LISTENER_ENABLE || OPENTHREAD_CONFIG_TD_WAKE_INITIATOR_ENABLE ||   \
+     OPENTHREAD_CONFIG_TIME_SYNC_ENABLE ||                                                        \
+     ((OPENTHREAD_RADIO || OPENTHREAD_CONFIG_LINK_RAW_ENABLE) && OPENTHREAD_CONFIG_MAC_SOFTWARE_TX_TIMING_ENABLE))
 
 class Radio;
+
+constexpr uint32_t kTenSymbolsDuration = OT_US_PER_TEN_SYMBOLS; ///< 10 symbols duration in microseconds
+
+constexpr uint32_t kUncertaintyUnit = 10; ///< Clock uncertainty unit in microseconds.
 
 /**
  * Represents a 64-bit radio time in microseconds referenced to a continuous monotonic local radio clock.
@@ -65,6 +71,11 @@ typedef otRadioTime64 Time64;
  * Represents a 32-bit radio time in microseconds (holds the lower 32 bits of a `Radio::Time64`).
  */
 typedef otRadioTime32 Time32;
+
+/**
+ * Represents the maximum value of a 64-bit radio time.
+ */
+constexpr Time64 kMaxTime64 = NumericLimits<Time64>::kMax;
 
 /**
  * Converts a 64-bit radio time to a 32-bit radio time.
@@ -98,6 +109,15 @@ bool IsTimeStrictlyBefore(Time32 aFirstTime, Time32 aSecondTime);
  * @returns The calculated clock drift in microseconds (rounded up).
  */
 uint32_t DetermineClockDrift(uint16_t aClockAccuracy, uint32_t aIntervalUs);
+
+/**
+ * Converts CSL uncertainty value to microseconds.
+ *
+ * @param[in] aUncertainty  The uncertainty in units of 10 microseconds (`kUncertaintyUnit`).
+ *
+ * @returns The uncertainty duration in microseconds.
+ */
+inline uint32_t ConvertUncertaintyToUsec(uint16_t aUncertainty) { return aUncertainty * kUncertaintyUnit; }
 
 #if OT_CONFIG_RADIO_TIME_ENABLE && OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE
 

@@ -83,22 +83,27 @@ bool Prefix::IsEqual(const uint8_t *aPrefixBytes, uint8_t aPrefixLength) const
     return (mLength == aPrefixLength) && (CountMatchingBits(GetBytes(), aPrefixBytes, mLength) >= mLength);
 }
 
-bool Prefix::ContainsPrefix(const Prefix &aSubPrefix) const
+bool Prefix::IsCoveredBy(const Prefix &aPrefix) const
 {
-    return (mLength >= aSubPrefix.mLength) &&
-           (CountMatchingBits(GetBytes(), aSubPrefix.GetBytes(), aSubPrefix.GetLength()) >= aSubPrefix.GetLength());
+    return (mLength >= aPrefix.mLength) &&
+           (CountMatchingBits(GetBytes(), aPrefix.GetBytes(), aPrefix.GetLength()) >= aPrefix.GetLength());
 }
 
-bool Prefix::ContainsPrefix(const NetworkPrefix &aSubPrefix) const
+bool Prefix::IsCoveredBy(const NetworkPrefix &aNetworkPrefix) const
 {
     return (mLength >= NetworkPrefix::kLength) &&
-           (CountMatchingBits(GetBytes(), aSubPrefix.m8, NetworkPrefix::kLength) >= NetworkPrefix::kLength);
+           (CountMatchingBits(GetBytes(), aNetworkPrefix.m8, NetworkPrefix::kLength) >= NetworkPrefix::kLength);
 }
 
 void Prefix::Tidy(void)
 {
-    uint8_t byteLength      = GetBytesSize();
-    uint8_t lastByteBitMask = static_cast<uint8_t>(~(static_cast<uint8_t>(1 << (byteLength * 8 - mLength)) - 1));
+    uint8_t byteLength;
+    uint8_t lastByteBitMask;
+
+    VerifyOrExit(mLength < kMaxLength);
+
+    byteLength      = GetBytesSize();
+    lastByteBitMask = static_cast<uint8_t>(0xffU << (byteLength * 8 - mLength));
 
     if (byteLength != 0)
     {
@@ -109,6 +114,9 @@ void Prefix::Tidy(void)
     {
         mPrefix.mFields.m8[i] = 0;
     }
+
+exit:
+    return;
 }
 
 bool Prefix::operator==(const Prefix &aOther) const

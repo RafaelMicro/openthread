@@ -76,7 +76,6 @@ set(COMMON_SOURCES
     api/netdata_publisher_api.cpp
     api/netdiag_api.cpp
     api/network_time_api.cpp
-    api/p2p_api.cpp
     api/ping_sender_api.cpp
     api/radio_stats_api.cpp
     api/random_crypto_api.cpp
@@ -165,8 +164,6 @@ set(COMMON_SOURCES
     mac/sub_mac.cpp
     mac/sub_mac_callbacks.cpp
     mac/sub_mac_csl_receiver.cpp
-    mac/sub_mac_wed.cpp
-    mac/wakeup_tx_scheduler.cpp
     meshcop/border_agent.cpp
     meshcop/border_agent_admitter.cpp
     meshcop/border_agent_ephemeral_key.cpp
@@ -255,7 +252,6 @@ set(COMMON_SOURCES
     thread/message_framer.cpp
     thread/mle.cpp
     thread/mle_ftd.cpp
-    thread/mle_p2p.cpp
     thread/mle_tlvs.cpp
     thread/mle_types.cpp
     thread/mlr_manager.cpp
@@ -275,8 +271,6 @@ set(COMMON_SOURCES
     thread/network_data_tlvs.cpp
     thread/network_data_types.cpp
     thread/panid_query_server.cpp
-    thread/peer.cpp
-    thread/peer_table.cpp
     thread/radio_selector.cpp
     thread/router.cpp
     thread/router_table.cpp
@@ -319,6 +313,7 @@ set(RADIO_COMMON_SOURCES
     common/binary_search.cpp
     common/error.cpp
     common/frame_builder.cpp
+    common/frame_data.cpp
     common/log.cpp
     common/random.cpp
     common/string.cpp
@@ -339,7 +334,6 @@ set(RADIO_COMMON_SOURCES
     mac/sub_mac.cpp
     mac/sub_mac_callbacks.cpp
     mac/sub_mac_csl_receiver.cpp
-    mac/sub_mac_wed.cpp
     radio/radio.cpp
     radio/radio_callbacks.cpp
     radio/radio_frame.cpp

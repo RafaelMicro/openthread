@@ -112,7 +112,6 @@ public:
         kScanDuration            = OT_MESHCOP_TLV_SCAN_DURATION,            ///< Scan Duration TLV
         kEnergyList              = OT_MESHCOP_TLV_ENERGY_LIST,              ///< Energy List TLV
         kThreadDomainName        = OT_MESHCOP_TLV_THREAD_DOMAIN_NAME,       ///< Thread Domain Name TLV
-        kWakeupChannel           = OT_MESHCOP_TLV_WAKEUP_CHANNEL,           ///< Wakeup Channel TLV
         kAdmitterState           = OT_MESHCOP_TLV_ADMITTER_STATE,           ///< Admitter State TLV
         kEnrollerId              = OT_MESHCOP_TLV_ENROLLER_ID,              ///< Enroller ID TLV
         kEnrollerMode            = OT_MESHCOP_TLV_ENROLLER_MODE,            ///< Enroller Mode TLV
@@ -245,11 +244,6 @@ typedef Mle::ChannelTlvValue ChannelTlvValue;
  * Defines Channel TLV constants and types.
  */
 typedef SimpleTlvInfo<Tlv::kChannel, ChannelTlvValue> ChannelTlv;
-
-/**
- * Defines Wake-up Channel TLV constants and types.
- */
-typedef SimpleTlvInfo<Tlv::kWakeupChannel, ChannelTlvValue> WakeupChannelTlv;
 
 /**
  * Defines PAN ID TLV constants and types.
@@ -833,7 +827,7 @@ public:
      *
      * @returns The Build value.
      */
-    uint16_t GetBuild(void) const { return ReadBitsBigEndian<uint16_t, kBuildMask>(mBuildRevision); }
+    uint16_t GetBuild(void) const { return ReadBitsIn<kBigEndian, uint16_t, kBuildMask>(mBuildRevision); }
 
     /**
      * Sets the Build value.
@@ -842,7 +836,7 @@ public:
      */
     void SetBuild(uint16_t aBuild)
     {
-        mBuildRevision = UpdateBitsBigEndian<uint16_t, kBuildMask>(mBuildRevision, aBuild);
+        mBuildRevision = UpdateBitsIn<kBigEndian, uint16_t, kBuildMask>(mBuildRevision, aBuild);
     }
 
     /**
@@ -852,7 +846,7 @@ public:
      */
     uint8_t GetRevision(void) const
     {
-        return static_cast<uint8_t>(ReadBitsBigEndian<uint16_t, kRevMask>(mBuildRevision));
+        return static_cast<uint8_t>(ReadBitsIn<kBigEndian, uint16_t, kRevMask>(mBuildRevision));
     }
 
     /**
@@ -862,7 +856,7 @@ public:
      */
     void SetRevision(uint8_t aRevision)
     {
-        mBuildRevision = UpdateBitsBigEndian<uint16_t, kRevMask>(mBuildRevision, static_cast<uint16_t>(aRevision));
+        mBuildRevision = UpdateBitsIn<kBigEndian, uint16_t, kRevMask>(mBuildRevision, aRevision);
     }
 
     /**
@@ -898,7 +892,7 @@ private:
     static constexpr uint8_t  kBuildOffset = 4;
     static constexpr uint16_t kBuildMask   = 0xfff << kBuildOffset;
     static constexpr uint8_t  kRevOffset   = 0;
-    static constexpr uint16_t kRevMask     = 0xf << kBuildOffset;
+    static constexpr uint16_t kRevMask     = 0xf << kRevOffset;
 
     // For `mMinorMajor`
     static constexpr uint8_t kMinorOffset = 4;

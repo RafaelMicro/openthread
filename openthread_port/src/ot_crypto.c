@@ -29,17 +29,8 @@
  * @file
  *    This file implements the Crypto platform APIs.
  */
-#include <assert.h>
-#include <openthread_port.h>
 
-#include <openthread-core-config.h>
-#include <openthread/config.h>
 #include <openthread/platform/crypto.h>
-#include <string.h>
-#include "hosal_crypto_aes.h"
-#include "hosal_crypto_sha256.h"
-#include "hosal_gpio.h"
-#include "log.h"
 #include "hosal_trng.h"
 #if 0
 static hosal_aes_dev_t aes_dev;

@@ -63,9 +63,6 @@ void Callbacks::HandleBusLatencyChanged(void)
 #if OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE && (OPENTHREAD_FTD || OPENTHREAD_MTD)
     Get<CslTxScheduler>().HandleRadioBusLatencyChanged();
 #endif
-#if OPENTHREAD_FTD && OPENTHREAD_CONFIG_WAKEUP_COORDINATOR_ENABLE
-    Get<WakeupTxScheduler>().HandleRadioBusLatencyChanged();
-#endif
 }
 
 #if OPENTHREAD_CONFIG_DIAG_ENABLE

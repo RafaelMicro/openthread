@@ -225,7 +225,7 @@ otError FakePlatform::SettingsGet(uint16_t aKey, uint16_t aIndex, uint8_t *aValu
         return OT_ERROR_NOT_FOUND;
     }
 
-    if (aIndex > setting->second.size())
+    if (aIndex >= setting->second.size())
     {
         return OT_ERROR_NOT_FOUND;
     }
@@ -280,7 +280,13 @@ otError FakePlatform::SettingsDelete(uint16_t aKey, int aIndex)
         return OT_ERROR_NOT_FOUND;
     }
 
-    if (static_cast<std::size_t>(aIndex) >= setting->second.size())
+    if (aIndex == -1)
+    {
+        mSettings.erase(setting);
+        return OT_ERROR_NONE;
+    }
+
+    if (aIndex < 0 || static_cast<std::size_t>(aIndex) >= setting->second.size())
     {
         return OT_ERROR_NOT_FOUND;
     }
@@ -406,6 +412,14 @@ bool otPlatRadioGetPromiscuous(otInstance *) { return false; }
 void otPlatRadioEnableSrcMatch(otInstance *, bool aEnabled)
 {
     FakePlatform::CurrentPlatform().SrcMatchEnable(aEnabled);
+}
+
+// Overrides the weak default in radio_platform.cpp, which reports
+// `kErrorNotImplemented`. Without this the fake RCP cannot accept a max power
+// table at all, so a test could not tell a correct restore from a missing one.
+otError otPlatRadioSetChannelMaxTransmitPower(otInstance *, uint8_t aChannel, int8_t aMaxPower)
+{
+    return FakePlatform::CurrentPlatform().ChannelMaxTxPowerSet(aChannel, aMaxPower);
 }
 
 otError otPlatRadioAddSrcMatchShortEntry(otInstance *, uint16_t aShortAddr)

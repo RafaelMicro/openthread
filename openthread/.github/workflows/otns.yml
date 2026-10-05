@@ -70,10 +70,11 @@ jobs:
       with:
         go-version: "1.23"
     - name: Set up Python
-      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: "3.9"
     - name: Bootstrap
+      timeout-minutes: 10
       run: |
         sudo apt-get update
         sudo apt-get --no-install-recommends install -y lcov ninja-build
@@ -113,10 +114,11 @@ jobs:
         with:
           go-version: "1.23"
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.9"
       - name: Bootstrap
+        timeout-minutes: 10
         run: |
           sudo apt-get update
           sudo apt-get --no-install-recommends install -y lcov ninja-build
@@ -178,10 +180,11 @@ jobs:
         with:
           go-version: "1.23"
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.9"
       - name: Bootstrap
+        timeout-minutes: 10
         run: |
           sudo apt-get update
           sudo apt-get --no-install-recommends install -y lcov ninja-build
@@ -226,6 +229,7 @@ jobs:
           submodules: recursive
           persist-credentials: false
       - name: Bootstrap
+        timeout-minutes: 10
         run: |
           sudo apt-get --no-install-recommends install -y lcov
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -236,7 +240,7 @@ jobs:
         run: |
           script/test combine_coverage
       - name: Upload Coverage
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         with:

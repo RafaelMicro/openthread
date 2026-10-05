@@ -1,12 +1,8 @@
-#include <assert.h>
-#include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 
 #include <openthread/platform/settings.h>
 #include "EnhancedFlashDataset.h"
 
-#include "log.h"
 
 #define OT_MAX_KEY_LEN              20
 #define OT_MAX_ENTRY_NUM            512

@@ -46,7 +46,7 @@ NcpBase::PropertyHandler NcpBase::FindGetPropertyHandler(spinel_prop_key_t aKey)
 {
 #define OT_NCP_GET_HANDLER_ENTRY(aPropertyName) {aPropertyName, &NcpBase::HandlePropertyGet<aPropertyName>}
 
-    constexpr static HandlerEntry sHandlerEntries[] = {
+    static constexpr HandlerEntry sHandlerEntries[] = {
         OT_NCP_GET_HANDLER_ENTRY(SPINEL_PROP_LAST_STATUS),
         OT_NCP_GET_HANDLER_ENTRY(SPINEL_PROP_PROTOCOL_VERSION),
         OT_NCP_GET_HANDLER_ENTRY(SPINEL_PROP_NCP_VERSION),
@@ -348,7 +348,7 @@ NcpBase::PropertyHandler NcpBase::FindGetPropertyHandler(spinel_prop_key_t aKey)
         OT_NCP_GET_HANDLER_ENTRY(SPINEL_PROP_THREAD_ACTIVE_DATASET_TLVS),
         OT_NCP_GET_HANDLER_ENTRY(SPINEL_PROP_THREAD_PENDING_DATASET_TLVS),
         OT_NCP_GET_HANDLER_ENTRY(SPINEL_PROP_THREAD_MGMT_SET_PENDING_DATASET_TLVS),
-#if OPENTHREAD_CONFIG_WAKEUP_COORDINATOR_ENABLE || OPENTHREAD_CONFIG_WAKEUP_END_DEVICE_ENABLE
+#if OPENTHREAD_CONFIG_TD_WAKE_INITIATOR_ENABLE || OPENTHREAD_CONFIG_TD_WAKE_LISTENER_ENABLE
         OT_NCP_GET_HANDLER_ENTRY(SPINEL_PROP_THREAD_WAKEUP_CHANNEL),
 #endif
 #if OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE
@@ -412,7 +412,7 @@ NcpBase::PropertyHandler NcpBase::FindSetPropertyHandler(spinel_prop_key_t aKey)
 {
 #define OT_NCP_SET_HANDLER_ENTRY(aPropertyName) {aPropertyName, &NcpBase::HandlePropertySet<aPropertyName>}
 
-    constexpr static HandlerEntry sHandlerEntries[] = {
+    static constexpr HandlerEntry sHandlerEntries[] = {
         OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_POWER_STATE),
 #if OPENTHREAD_CONFIG_NCP_ENABLE_MCU_POWER_STATE_CONTROL
         OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_MCU_POWER_STATE),
@@ -546,6 +546,9 @@ NcpBase::PropertyHandler NcpBase::FindSetPropertyHandler(spinel_prop_key_t aKey)
         OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_DNSSD_REQUEST_RESULT),
         OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_DNSSD_BROWSE_RESULT),
         OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_DNSSD_SRV_RESULT),
+        OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_DNSSD_TXT_RESULT),
+        OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_DNSSD_IP6_ADDRESS_RESULT),
+        OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_DNSSD_IP4_ADDRESS_RESULT),
 #endif
 #if OPENTHREAD_CONFIG_BORDER_AGENT_ENABLE && OPENTHREAD_CONFIG_BORDER_AGENT_EPHEMERAL_KEY_ENABLE
         OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_BORDER_AGENT_EPHEMERAL_KEY_ENABLE),
@@ -658,7 +661,7 @@ NcpBase::PropertyHandler NcpBase::FindSetPropertyHandler(spinel_prop_key_t aKey)
         OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_THREAD_ACTIVE_DATASET_TLVS),
         OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_THREAD_PENDING_DATASET_TLVS),
         OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_THREAD_MGMT_SET_PENDING_DATASET_TLVS),
-#if OPENTHREAD_CONFIG_WAKEUP_COORDINATOR_ENABLE || OPENTHREAD_CONFIG_WAKEUP_END_DEVICE_ENABLE
+#if OPENTHREAD_CONFIG_TD_WAKE_INITIATOR_ENABLE || OPENTHREAD_CONFIG_TD_WAKE_LISTENER_ENABLE
         OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_THREAD_WAKEUP_CHANNEL),
 #endif
 #if OPENTHREAD_CONFIG_COMMISSIONER_ENABLE
@@ -723,7 +726,7 @@ NcpBase::PropertyHandler NcpBase::FindInsertPropertyHandler(spinel_prop_key_t aK
 {
 #define OT_NCP_INSERT_HANDLER_ENTRY(aPropertyName) {aPropertyName, &NcpBase::HandlePropertyInsert<aPropertyName>}
 
-    constexpr static HandlerEntry sHandlerEntries[] = {
+    static constexpr HandlerEntry sHandlerEntries[] = {
 #if OPENTHREAD_CONFIG_PLATFORM_POWER_CALIBRATION_ENABLE
         OT_NCP_INSERT_HANDLER_ENTRY(SPINEL_PROP_PHY_CALIBRATED_POWER),
 #endif
@@ -776,7 +779,7 @@ NcpBase::PropertyHandler NcpBase::FindRemovePropertyHandler(spinel_prop_key_t aK
 {
 #define OT_NCP_REMOVE_HANDLER_ENTRY(aPropertyName) {aPropertyName, &NcpBase::HandlePropertyRemove<aPropertyName>}
 
-    constexpr static HandlerEntry sHandlerEntries[] = {
+    static constexpr HandlerEntry sHandlerEntries[] = {
 #if OPENTHREAD_MTD || OPENTHREAD_FTD
 #if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE
         OT_NCP_REMOVE_HANDLER_ENTRY(SPINEL_PROP_THREAD_ON_MESH_NETS),

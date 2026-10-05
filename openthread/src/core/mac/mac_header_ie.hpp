@@ -68,14 +68,17 @@ public:
      *
      * @returns the IE Element ID.
      */
-    uint8_t GetId(void) const { return static_cast<uint8_t>(ReadBitsLittleEndian<uint16_t, kIdMask>(mLenIdType)); }
+    uint8_t GetId(void) const { return static_cast<uint8_t>(ReadBitsIn<kLittleEndian, uint16_t, kIdMask>(mLenIdType)); }
 
     /**
      * Returns the IE content length.
      *
      * @returns the IE content length.
      */
-    uint8_t GetLength(void) const { return static_cast<uint8_t>(ReadBitsLittleEndian<uint16_t, kLenMask>(mLenIdType)); }
+    uint8_t GetLength(void) const
+    {
+        return static_cast<uint8_t>(ReadBitsIn<kLittleEndian, uint16_t, kLenMask>(mLenIdType));
+    }
 
     /**
      * Returns the total size of the Header IE (descriptor header plus content length) in bytes.
@@ -168,8 +171,8 @@ private:
     static constexpr uint16_t kLenMask = 0x007f << 0;
     static constexpr uint16_t kIdMask  = 0x00ff << 7;
 
-    void SetId(uint8_t aId) { mLenIdType = UpdateBitsLittleEndian<uint16_t, kIdMask>(mLenIdType, aId); }
-    void SetLength(uint8_t aLength) { mLenIdType = UpdateBitsLittleEndian<uint16_t, kLenMask>(mLenIdType, aLength); }
+    void SetId(uint8_t aId) { mLenIdType = UpdateBitsIn<kLittleEndian, uint16_t, kIdMask>(mLenIdType, aId); }
+    void SetLength(uint8_t aLen) { mLenIdType = UpdateBitsIn<kLittleEndian, uint16_t, kLenMask>(mLenIdType, aLen); }
 
     uint16_t mLenIdType;
 } OT_TOOL_PACKED_END;
@@ -423,144 +426,6 @@ private:
     }
 
 } OT_TOOL_PACKED_END;
-
-/**
- * This class implements Rendezvous Time IE data structure.
- *
- * IEEE 802.15.4 Rendezvous Time IE contains two fields, Rendezvous Time and
- * Wake-up Interval, but the Wake-up Interval is not used in Thread, so it is
- * not included in this class.
- */
-OT_TOOL_PACKED_BEGIN
-class RendezvousTimeIe : public HeaderIe
-{
-    friend class HeaderIe;
-
-public:
-    static constexpr uint8_t kId = 0x1d; ///< The Rendezvous Time IE Element ID.
-
-    /**
-     * Initializes the Rendezvous Time IE.
-     */
-    void Init(void) { HeaderIe::Init(kId, sizeof(RendezvousTimeIe) - sizeof(HeaderIe)); }
-
-    /**
-     * This method returns the Rendezvous Time.
-     *
-     * @returns the Rendezvous Time in the units of 10 symbols.
-     */
-    uint16_t GetRendezvousTime(void) const { return LittleEndian::HostSwap16(mRendezvousTime); }
-
-    /**
-     * This method sets the Rendezvous Time.
-     *
-     * @param[in]  aRendezvousTime  The Rendezvous Time in the units of 10 symbols.
-     */
-    void SetRendezvousTime(uint16_t aRendezvousTime) { mRendezvousTime = LittleEndian::HostSwap16(aRendezvousTime); }
-
-private:
-    bool IsValid(void) const { return GetSize() >= sizeof(RendezvousTimeIe); }
-
-    uint16_t mRendezvousTime;
-} OT_TOOL_PACKED_END;
-
-#if OPENTHREAD_CONFIG_WAKEUP_COORDINATOR_ENABLE || OPENTHREAD_CONFIG_WAKEUP_END_DEVICE_ENABLE
-
-/**
- * Implements Connection IE data structure.
- */
-OT_TOOL_PACKED_BEGIN
-class ConnectionIe : public ThreadVendorIe
-{
-    friend class HeaderIe;
-
-public:
-    /**
-     * Initializes the Connection IE.
-     *
-     * @param[in] aWakeupIdLength  The length of the Wakeup ID field in bytes.
-     */
-    void Init(uint8_t aWakeupIdLength)
-    {
-        HeaderIe::Init(kId, sizeof(ConnectionIe) - sizeof(HeaderIe) + aWakeupIdLength);
-        SetVendorOui(kVendorOuiThread);
-        SetSubType(kSubType);
-        mConnectionWindow = 0;
-    }
-
-    /**
-     * Returns the Retry Interval.
-     *
-     * The Retry Interval defines how frequently the Wake-up End Device is
-     * supposed to retry sending the Parent Request to the Wake-up Coordinator.
-     *
-     * @returns the Retry Interval in the units of Wake-up Intervals (7.5ms by default).
-     */
-    uint8_t GetRetryInterval(void) const { return ReadBits<uint8_t, kRetryIntervalMask>(mConnectionWindow); }
-
-    /**
-     * Sets the Retry Interval.
-     *
-     * @param[in]  aRetryInterval  The Retry Interval in the units of Wake-up Intervals (7.5ms by default).
-     */
-    void SetRetryInterval(uint8_t aRetryInterval)
-    {
-        WriteBits<uint8_t, kRetryIntervalMask>(mConnectionWindow, aRetryInterval);
-    }
-
-    /**
-     * Returns the Retry Count.
-     *
-     * The Retry Count defines how many times the Wake-up End Device is supposed
-     * to retry sending the Parent Request to the Wakeup Coordinator.
-     *
-     * @returns the Retry Count.
-     */
-    uint8_t GetRetryCount(void) const { return ReadBits<uint8_t, kRetryCountMask>(mConnectionWindow); }
-
-    /**
-     * Sets the Retry Count
-     *
-     * @param[in]  aRetryCount  The Retry Count.
-     */
-    void SetRetryCount(uint8_t aRetryCount) { WriteBits<uint8_t, kRetryCountMask>(mConnectionWindow, aRetryCount); }
-
-    /**
-     * Sets the Wake-up Identifier.
-     *
-     * @param[in]  aWakeupId  The Wake-up Identifier.
-     *
-     * @retval kErrorNone   Successfully set the Wake-up Identifier.
-     * @retval kErrorParse  The length of the given Wake-up Identifier didn't match the reserved length.
-     */
-    Error SetWakeupId(WakeupId aWakeupId);
-
-    /**
-     * Gets the Wake-up Identifier.
-     *
-     * @param[out]  aWakeupId  A reference to the Wake-up Identifier.
-     *
-     * @retval kErrorNone    Successfully got the Wake-up Identifier.
-     * @retval kErrorParse   Failed to parse the Wake-up Identifier from the Connection IE.
-     */
-    Error GetWakeupId(WakeupId &aWakeupId) const;
-
-private:
-    static constexpr uint8_t kSubType = 0x01;
-
-    static constexpr uint8_t kRetryIntervalMask = 0x3 << 4;
-    static constexpr uint8_t kRetryCountMask    = 0xf << 0;
-
-    bool IsValid(void) const
-    {
-        return (GetSize() >= sizeof(ConnectionIe)) && (GetVendorOui() == kVendorOuiThread) &&
-               (GetSubType() == kSubType);
-    }
-
-    uint8_t mConnectionWindow;
-    // Followed by variable length Wakeup ID
-} OT_TOOL_PACKED_END;
-#endif // OPENTHREAD_CONFIG_WAKEUP_COORDINATOR_ENABLE || OPENTHREAD_CONFIG_WAKEUP_END_DEVICE_ENABLE
 
 /**
  * @}

@@ -31,8 +31,8 @@
  *   This file includes compile-time configurations for the Wake-up Coordinator and Wake-up End Device roles.
  */
 
-#ifndef OT_CORE_CONFIG_WAKEUP_H_
-#define OT_CORE_CONFIG_WAKEUP_H_
+#ifndef CONFIG_WAKEUP_H_
+#define CONFIG_WAKEUP_H_
 
 /**
  * @addtogroup config-wakeup
@@ -90,24 +90,6 @@
 #endif
 
 /**
- * @def OPENTHREAD_CONFIG_WAKEUP_TX_INTERVAL
- *
- * The default time interval between (start of) wake-up frame transmissions in microseconds.
- */
-#ifndef OPENTHREAD_CONFIG_WAKEUP_TX_INTERVAL
-#define OPENTHREAD_CONFIG_WAKEUP_TX_INTERVAL 7500
-#endif
-
-/**
- * @def OPENTHREAD_CONFIG_WAKEUP_MAX_DURATION
- *
- * The default duration of time that wake-up frames are periodically transmitted in milliseconds.
- */
-#ifndef OPENTHREAD_CONFIG_WAKEUP_MAX_DURATION
-#define OPENTHREAD_CONFIG_WAKEUP_MAX_DURATION 1090
-#endif
-
-/**
  * @def OPENTHREAD_CONFIG_WED_LISTEN_INTERVAL
  *
  * The default wake-up listen interval in microseconds.
@@ -148,4 +130,4 @@
  * @}
  */
 
-#endif // OT_CORE_CONFIG_WAKEUP_H_
+#endif // CONFIG_WAKEUP_H_

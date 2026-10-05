@@ -16,31 +16,17 @@
  *
  */
 #include <hosal_uart.h>
-#include <stdarg.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 
 // #include <openthread-core-config.h>
-#include <openthread/config.h>
 
-#include <openthread/platform/debug_uart.h>
-#include <openthread/platform/logging.h>
 #include <openthread/cli.h>
 #include <openthread_port.h>
 
 #include <uart.h>
 
-#include <FreeRTOS.h>
-#include <semphr.h>
-#include <stream_buffer.h>
-#include <task.h>
-#include <timers.h>
 
 #include "cli.h"
-#include "log.h"
-#include "shell.h"
 
 typedef struct _otUart {
     uint16_t start;

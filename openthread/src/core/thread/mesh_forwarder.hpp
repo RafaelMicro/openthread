@@ -162,17 +162,15 @@ public:
     void SetRxOnWhenIdle(bool aRxOnWhenIdle);
 
 #if OPENTHREAD_FTD
-    typedef IndirectSender::MessageChecker MessageChecker; ///< General predicate function checking a message.
-
     /**
      * Removes and frees messages queued for a child, based on a given predicate.
      *
      * The `aChild` can be either sleepy or non-sleepy.
      *
-     * @param[in] aChild            The child whose messages are to be evaluated.
-     * @param[in] aMessageChecker   The predicate function to filter messages.
+     * @param[in] aChild    The child whose messages are to be evaluated.
+     * @param[in] aChecker  The predicate function to filter messages.
      */
-    void RemoveMessagesForChild(Child &aChild, MessageChecker aMessageChecker);
+    void RemoveMessagesForChild(Child &aChild, Message::Checker aChecker);
 #endif
 
     /**
@@ -256,8 +254,8 @@ public:
     /**
      * Handles a deferred ack.
      *
-     * Some radio links can use deferred ack logic, where a tx request always report `HandleSentFrame()` quickly. The
-     * link layer would wait for the ack and report it at a later time using this method.
+     * Some radio links can use deferred ack logic, where a tx request always reports `HandleFrameTxDone()` quickly.
+     * The link layer would wait for the ack and report it at a later time using this method.
      *
      * The link layer is expected to call `HandleDeferredAck()` (with success or failure status) for every tx request
      * on the radio link.
@@ -295,6 +293,14 @@ private:
         kEvictReasonNoMessageBuffer,
         kEvictReasonDirectTxQueueAtLimit,
     };
+
+#if OPENTHREAD_FTD
+    enum PriorityGuard : uint8_t // Used in FindMessageToEvict()
+    {
+        kLowerPriorityThan,
+        kEqualOrHigherPriorityThan,
+    };
+#endif
 
     enum MessageAction : uint8_t
     {
@@ -456,14 +462,14 @@ private:
     Error RemoveUnsecureReassemblyMessage(EvictReason aEvictReason);
     void  HandleDiscoverComplete(void);
 
-    void          HandleReceivedFrame(Mac::RxFrame &aFrame);
-    Mac::TxFrame *HandleFrameRequest(Mac::TxFrames &aTxFrames);
-    Neighbor     *UpdateNeighborOnSentFrame(Mac::TxFrame       &aFrame,
-                                            Error               aError,
-                                            const Mac::Address &aMacDest,
-                                            bool                aIsDataPoll);
+    void          HandleReceivedFrame(Mac::RxFrame::ParseInfo &aFrameInfo);
+    Mac::TxFrame *PrepareFrame(Mac::TxFrames &aTxFrames);
+    Neighbor     *UpdateNeighborOnFrameTxDone(Mac::TxFrame::ParseInfo &aFrameInfo,
+                                              Error                    aError,
+                                              const Mac::Address      &aMacDest,
+                                              bool                     aIsDataPoll);
     void UpdateNeighborLinkFailures(Neighbor &aNeighbor, Error aError, bool aAllowNeighborRemove, uint8_t aFailLimit);
-    void HandleSentFrame(Mac::TxFrame &aFrame, Error aError);
+    void HandleFrameTxDone(Mac::TxFrame::ParseInfo &aFrameInfo, Error aError);
     void UpdateSendMessage(Error aFrameTxError, Mac::Address &aMacDest, Neighbor *aNeighbor);
     void FinalizeMessageDirectTx(Message &aMessage, Error aError);
     void FinalizeAndRemoveMessage(Message &aMessage, Error aError, MessageAction aAction);
@@ -476,6 +482,8 @@ private:
     Error GetFramePriority(RxInfo &aRxInfo, Message::Priority &aPriority);
 
 #if OPENTHREAD_FTD
+    Message      *FindMessageToEvict(PriorityGuard aGuard, Message::Priority aPriority, Message::Checker aChecker);
+    void          DetermineDirectOrIndirectTx(Message &aMessage);
     void          FinalizeMessageIndirectTxs(Message &aMessage);
     FwdFrameInfo *FindFwdFrameInfoEntry(uint16_t aSrcRloc16, uint16_t aDatagramTag);
     bool          UpdateFwdFrameInfoArrayOnTimeTick(void);
@@ -497,7 +505,7 @@ private:
     void LogMessage(MessageAction aAction, const Message &aMessage);
     void LogMessage(MessageAction aAction, const Message &aMessage, Error aError);
     void LogMessage(MessageAction aAction, const Message &aMessage, Error aError, const Mac::Address *aAddress);
-    void LogFrame(const char *aActionText, const Mac::Frame &aFrame, Error aError);
+    void LogFrame(const char *aActionText, const Mac::Frame::ParseInfo &aFrameInfo, Error aError);
     void LogFragmentFrameDrop(Error aError, const RxInfo &aRxInfo, const Lowpan::FragmentHeader &aFragmentHeader);
     void LogLowpanHcFrameDrop(Error aError, const RxInfo &aRxInfo);
 

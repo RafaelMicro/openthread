@@ -9,12 +9,8 @@
  * 
  */
 
-#include <stdint.h>
-#include <stdio.h>
-#include <string.h>
 #include <stdarg.h>
 
-#include <openthread/config.h>
 #include <openthread/platform/logging.h>
 #include <openthread_port.h>
 

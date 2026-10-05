@@ -213,14 +213,14 @@ void InfraIf::SendDhcp6(Message &aMessage, Ip6::Address &aDestAddress)
     otPlatInfraIfDhcp6PdClientSend(&GetInstance(), &aMessage, &aDestAddress, mIfIndex);
 }
 
-void InfraIf::HandleDhcp6Received(Message &aMessage, uint32_t aInfraIfIndex)
+void InfraIf::HandleDhcp6Received(OwnedPtr<Message> aMessagePtr, uint32_t aInfraIfIndex)
 {
     Error error = kErrorNone;
 
     VerifyOrExit(mInitialized && mIsRunning, error = kErrorInvalidState);
     VerifyOrExit(aInfraIfIndex == mIfIndex, error = kErrorDrop);
 
-    Get<Dhcp6PdClient>().HandleReceived(aMessage);
+    Get<Dhcp6PdClient>().HandleReceived(aMessagePtr.PassOwnership());
 
 exit:
     LogDebgOnError(error, "process DHCPv6 msg");
@@ -338,7 +338,7 @@ extern "C" void otPlatInfraIfDhcp6PdClientHandleReceived(otInstance *aInstance,
                                                          otMessage  *aMessage,
                                                          uint32_t    aInfraIfIndex)
 {
-    AsCoreType(aInstance).Get<InfraIf>().HandleDhcp6Received(AsCoreType(aMessage), aInfraIfIndex);
+    AsCoreType(aInstance).Get<InfraIf>().HandleDhcp6Received(OwnedPtr<Message>(AsCoreTypePtr(aMessage)), aInfraIfIndex);
 }
 #endif
 

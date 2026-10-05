@@ -8,8 +8,6 @@
  * Copyright (C) 2019 Rafael Microelectronics Inc. All rights reserved.
  *
  ******************************************************************************/
-#include <stdio.h>
-#include <string.h>
 #include "mcu.h"
 #include "mac_frame_gen.h"
 

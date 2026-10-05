@@ -220,8 +220,8 @@ Radio::Time64 CslTxScheduler::NeighborInfo::DetermineNextCslWindow(Radio::Time64
     //         = nextTmh - phrDuration
     //         = lastRxTimestamp + 160us * (n * cslPeriod + cslPhase)
 
-    uint32_t      periodInUs    = GetCslPeriod() * Radio::kUsPerTenSymbols;
-    Radio::Time64 firstTxWindow = GetLastRxTimestamp() + GetCslPhase() * Radio::kUsPerTenSymbols;
+    uint32_t      periodInUs    = Mac::CslPeriodToUsec(GetCslPeriod());
+    Radio::Time64 firstTxWindow = GetLastRxTimestamp() + GetCslPhase() * Radio::kTenSymbolsDuration;
     Radio::Time64 nextTxWindow  = aRadioNow - (aRadioNow % periodInUs) + (firstTxWindow % periodInUs);
 
     while (nextTxWindow < aRadioNow + aLeadTime)
@@ -234,7 +234,7 @@ Radio::Time64 CslTxScheduler::NeighborInfo::DetermineNextCslWindow(Radio::Time64
 
 #if OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
 
-Mac::TxFrame *CslTxScheduler::HandleFrameRequest(Mac::TxFrames &aTxFrames)
+Mac::TxFrame *CslTxScheduler::PrepareFrame(Mac::TxFrames &aTxFrames)
 {
     Mac::TxFrame *frame = nullptr;
 
@@ -258,13 +258,17 @@ Mac::TxFrame *CslTxScheduler::HandleFrameRequest(Mac::TxFrames &aTxFrames)
         // child, we ensure to use the same frame counter, key id, and
         // data sequence number as the previous attempt.
 
-        frame->SetIsARetransmission(true);
-        frame->SetSequence(mCslTxNeighbor->GetIndirectDataSequenceNumber());
+        Mac::TxFrame::ParseInfo frameInfo;
 
-        if (frame->GetSecurityEnabled())
+        frame->SetIsARetransmission(true);
+
+        IgnoreError(frameInfo.ParseFrom(*frame, Mac::Frame::kParseFully));
+        frameInfo.WriteSequenceNum(mCslTxNeighbor->GetIndirectDataSequenceNumber());
+
+        if (frameInfo.mIsSecurityEnabled)
         {
-            frame->SetFrameCounter(mCslTxNeighbor->GetIndirectFrameCounter());
-            frame->SetKeyIndex(mCslTxNeighbor->GetIndirectKeyIndex());
+            frameInfo.WriteFrameCounter(mCslTxNeighbor->GetIndirectFrameCounter());
+            frameInfo.WriteKeyIndex(mCslTxNeighbor->GetIndirectKeyIndex());
         }
     }
     else
@@ -290,8 +294,7 @@ Mac::TxFrame *CslTxScheduler::HandleFrameRequest(Mac::TxFrames &aTxFrames)
         ExitNow();
     }
 
-    frame->SetTxDelayBaseTime(Radio::ConvertTime64To32(mCslTxNeighbor->GetLastRxTimestamp()));
-    frame->SetTxDelay(static_cast<uint32_t>(mNeighborCslWindow - mCslTxNeighbor->GetLastRxTimestamp()));
+    frame->SetTargetTxTime(mNeighborCslWindow, mCslTxNeighbor->GetLastRxTimestamp());
     frame->SetCsmaCaEnabled(true);
 
 exit:
@@ -300,11 +303,11 @@ exit:
 
 #else // OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
 
-Mac::TxFrame *CslTxScheduler::HandleFrameRequest(Mac::TxFrames &) { return nullptr; }
+Mac::TxFrame *CslTxScheduler::PrepareFrame(Mac::TxFrames &) { return nullptr; }
 
 #endif // OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
 
-void CslTxScheduler::HandleSentFrame(const Mac::TxFrame &aFrame, Error aError)
+void CslTxScheduler::HandleFrameTxDone(const Mac::TxFrame::ParseInfo &aFrameInfo, Error aError)
 {
     VerifyOrExit(mCslTxNeighbor != nullptr);
 
@@ -316,7 +319,7 @@ void CslTxScheduler::HandleSentFrame(const Mac::TxFrame &aFrame, Error aError)
         break;
 
     case kErrorNoAck:
-        OT_ASSERT(!aFrame.GetSecurityEnabled() || aFrame.IsHeaderUpdated());
+        OT_ASSERT(!aFrameInfo.mIsSecurityEnabled || aFrameInfo.GetTxFrame()->IsHeaderUpdated());
 
         mCslTxNeighbor->IncrementCslTxAttempts();
         LogInfo("CSL tx to %04x failed, attempt %d/%d", mCslTxNeighbor->GetRloc16(), mCslTxNeighbor->GetCslTxAttempts(),
@@ -338,20 +341,14 @@ void CslTxScheduler::HandleSentFrame(const Mac::TxFrame &aFrame, Error aError)
         // dropped until indirect tx attempts count reaches max. So here it
         // would set sequence number and schedule next CSL tx.
 
-        if (!aFrame.IsEmpty())
+        if (!aFrameInfo.GetTxFrame()->IsEmpty())
         {
-            mCslTxNeighbor->SetIndirectDataSequenceNumber(aFrame.GetSequence());
+            mCslTxNeighbor->SetIndirectDataSequenceNumber(aFrameInfo.mSequenceNum);
 
-            if (aFrame.GetSecurityEnabled() && aFrame.IsHeaderUpdated())
+            if (aFrameInfo.mIsSecurityEnabled && aFrameInfo.GetTxFrame()->IsHeaderUpdated())
             {
-                uint32_t frameCounter;
-                uint8_t  keyIndex;
-
-                IgnoreError(aFrame.GetFrameCounter(frameCounter));
-                mCslTxNeighbor->SetIndirectFrameCounter(frameCounter);
-
-                IgnoreError(aFrame.GetKeyIndex(keyIndex));
-                mCslTxNeighbor->SetIndirectKeyIndex(keyIndex);
+                mCslTxNeighbor->SetIndirectFrameCounter(aFrameInfo.mFrameCounter);
+                mCslTxNeighbor->SetIndirectKeyIndex(aFrameInfo.mKeyIndex);
             }
         }
 
@@ -362,7 +359,7 @@ void CslTxScheduler::HandleSentFrame(const Mac::TxFrame &aFrame, Error aError)
         OT_UNREACHABLE_CODE(break);
     }
 
-    Get<IndirectSender>().HandleSentFrameToCslNeighbor(aFrame, mFrameContext, aError, *mCslTxNeighbor);
+    Get<IndirectSender>().HandleFrameTxToCslNeighborDone(aFrameInfo, mFrameContext, aError, *mCslTxNeighbor);
 
 exit:
     mCslTxMessage  = nullptr;

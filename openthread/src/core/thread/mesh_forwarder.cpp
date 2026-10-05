@@ -131,6 +131,43 @@ exit:
     return;
 }
 
+void MeshForwarder::SendMessage(OwnedPtr<Message> aMessagePtr)
+{
+    Message &message = *aMessagePtr.Release();
+
+    message.SetOffset(0);
+    message.SetDatagramTag(0);
+    message.SetTimestampToNow();
+
+    mSendQueue.Enqueue(message);
+
+#if OPENTHREAD_FTD
+    if (Get<Mle::Mle>().IsFullThreadDevice())
+    {
+        DetermineDirectOrIndirectTx(message);
+    }
+    else
+#endif
+    {
+        message.SetDirectTransmission();
+    }
+
+#if (OPENTHREAD_CONFIG_MAX_FRAMES_IN_DIRECT_TX_QUEUE > 0)
+    ApplyDirectTxQueueLimit(message);
+#endif
+
+    if (message.IsDirectTransmission())
+    {
+        mScheduleTransmissionTask.Post();
+        ExitNow();
+    }
+
+    RemoveMessageIfNoPendingTx(message);
+
+exit:
+    return;
+}
+
 void MeshForwarder::ResumeMessageTransmissions(void)
 {
     if (mTxPaused)
@@ -422,7 +459,6 @@ void MeshForwarder::ApplyDirectTxQueueLimit(Message &aMessage)
 
     LogMessage(kMessageFullQueueDrop, aMessage);
     FinalizeMessageDirectTx(aMessage, kErrorDrop);
-    RemoveMessageIfNoPendingTx(aMessage);
 
 exit:
     return;
@@ -571,6 +607,11 @@ Error MeshForwarder::UpdateIp6Route(Message &aMessage)
 
     mAddMeshHeader = false;
 
+    if (aMessage.GetSubType() == Message::kSubTypeJoinerEntrust)
+    {
+        VerifyOrExit(Get<KeyManager>().IsKekSet(), error = kErrorDrop);
+    }
+
     IgnoreError(aMessage.Read(0, ip6Header));
 
     VerifyOrExit(!ip6Header.GetSource().IsMulticast(), error = kErrorDrop);
@@ -647,7 +688,7 @@ void MeshForwarder::SetRxOnWhenIdle(bool aRxOnWhenIdle)
     }
 }
 
-Mac::TxFrame *MeshForwarder::HandleFrameRequest(Mac::TxFrames &aTxFrames)
+Mac::TxFrame *MeshForwarder::PrepareFrame(Mac::TxFrames &aTxFrames)
 {
     Mac::TxFrame *frame         = nullptr;
     bool          addFragHeader = false;
@@ -687,6 +728,12 @@ Mac::TxFrame *MeshForwarder::HandleFrameRequest(Mac::TxFrames &aTxFrames)
             mSendMessage->SetLinkSecurityEnabled(true);
         }
 #endif
+        if ((mSendMessage->GetSubType() == Message::kSubTypeJoinerEntrust) && !Get<KeyManager>().IsKekSet())
+        {
+            mMessageNextOffset = mSendMessage->GetLength();
+            ExitNow(frame = nullptr);
+        }
+
         mMessageNextOffset = Get<MessageFramer>().PrepareFrame(*frame, *mSendMessage, mMacAddrs, mAddMeshHeader,
                                                                mMeshSource, mMeshDest, addFragHeader);
 
@@ -736,10 +783,10 @@ exit:
     return frame;
 }
 
-Neighbor *MeshForwarder::UpdateNeighborOnSentFrame(Mac::TxFrame       &aFrame,
-                                                   Error               aError,
-                                                   const Mac::Address &aMacDest,
-                                                   bool                aIsDataPoll)
+Neighbor *MeshForwarder::UpdateNeighborOnFrameTxDone(Mac::TxFrame::ParseInfo &aFrameInfo,
+                                                     Error                    aError,
+                                                     const Mac::Address      &aMacDest,
+                                                     bool                     aIsDataPoll)
 {
     OT_UNUSED_VARIABLE(aIsDataPoll);
 
@@ -751,14 +798,14 @@ Neighbor *MeshForwarder::UpdateNeighborOnSentFrame(Mac::TxFrame       &aFrame,
     neighbor = Get<NeighborTable>().FindNeighbor(aMacDest);
     VerifyOrExit(neighbor != nullptr);
 
-    VerifyOrExit(aFrame.GetAckRequest());
+    VerifyOrExit(aFrameInfo.mIsAckRequest);
 
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
     // TREL radio link uses deferred ack model. We ignore
     // `SendDone` event from `Mac` layer with success status and
     // wait for deferred ack callback instead.
 #if OPENTHREAD_CONFIG_MULTI_RADIO
-    if (aFrame.GetRadioType() == Radio::kTypeTrel)
+    if (aFrameInfo.GetTxFrame()->GetRadioType() == Radio::kTypeTrel)
 #endif
     {
         VerifyOrExit(aError != kErrorNone);
@@ -766,7 +813,7 @@ Neighbor *MeshForwarder::UpdateNeighborOnSentFrame(Mac::TxFrame       &aFrame,
 #endif // OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
 
 #if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
-    if (aFrame.Has<Mac::CslIe>() && aIsDataPoll)
+    if (aFrameInfo.Has<Mac::CslIe>() && aIsDataPoll)
     {
         failLimit = kFailedCslDataPollTransmissions;
     }
@@ -831,10 +878,9 @@ exit:
 }
 #endif // #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
 
-void MeshForwarder::HandleSentFrame(Mac::TxFrame &aFrame, Error aError)
+void MeshForwarder::HandleFrameTxDone(Mac::TxFrame::ParseInfo &aFrameInfo, Error aError)
 {
-    Neighbor    *neighbor = nullptr;
-    Mac::Address macDest;
+    Neighbor *neighbor = nullptr;
 
     OT_ASSERT((aError == kErrorNone) || (aError == kErrorChannelAccessFailure) || (aError == kErrorAbort) ||
               (aError == kErrorNoAck));
@@ -855,13 +901,13 @@ void MeshForwarder::HandleSentFrame(Mac::TxFrame &aFrame, Error aError)
     }
 #endif
 
-    if (!aFrame.IsEmpty())
+    if (!aFrameInfo.GetTxFrame()->IsEmpty())
     {
-        IgnoreError(aFrame.GetDstAddr(macDest));
-        neighbor = UpdateNeighborOnSentFrame(aFrame, aError, macDest, /* aIsDataPoll */ false);
+        neighbor =
+            UpdateNeighborOnFrameTxDone(aFrameInfo, aError, aFrameInfo.mAddrs.mDestination, /* aIsDataPoll */ false);
     }
 
-    UpdateSendMessage(aError, macDest, neighbor);
+    UpdateSendMessage(aError, aFrameInfo.mAddrs.mDestination, neighbor);
 
 exit:
     return;
@@ -975,7 +1021,7 @@ bool MeshForwarder::RemoveMessageIfNoPendingTx(Message &aMessage)
     bool didRemove = false;
 
 #if OPENTHREAD_FTD
-    VerifyOrExit(!aMessage.IsDirectTransmission() && aMessage.GetIndirectTxChildMask().IsEmpty());
+    VerifyOrExit(!aMessage.IsDirectTransmission() && !aMessage.IsIndirectTransmission());
 #else
     VerifyOrExit(!aMessage.IsDirectTransmission());
 #endif
@@ -1005,61 +1051,46 @@ exit:
     return error;
 }
 
-void MeshForwarder::HandleReceivedFrame(Mac::RxFrame &aFrame)
+void MeshForwarder::HandleReceivedFrame(Mac::RxFrame::ParseInfo &aFrameInfo)
 {
     Error  error = kErrorNone;
     RxInfo rxInfo(GetInstance());
 
     VerifyOrExit(mEnabled, error = kErrorInvalidState);
 
-    rxInfo.mFrameData.Init(aFrame.GetPayload(), aFrame.GetPayloadLength());
+    rxInfo.mFrameData = aFrameInfo.mPayload;
+    rxInfo.mMacAddrs  = aFrameInfo.mAddrs;
 
-    SuccessOrExit(error = aFrame.GetSrcAddr(rxInfo.mMacAddrs.mSource));
-    SuccessOrExit(error = aFrame.GetDstAddr(rxInfo.mMacAddrs.mDestination));
-
-    rxInfo.mLinkInfo.SetFrom(aFrame);
+    rxInfo.mLinkInfo.SetFrom(aFrameInfo);
 
     Get<SupervisionListener>().UpdateOnReceive(rxInfo.mMacAddrs.mSource, rxInfo.IsLinkSecurityEnabled());
 
-    switch (aFrame.GetType())
+    if (Lowpan::MeshHeader::IsMeshHeader(rxInfo.mFrameData))
     {
-    case Mac::Frame::kTypeData:
-        if (Lowpan::MeshHeader::IsMeshHeader(rxInfo.mFrameData))
-        {
 #if OPENTHREAD_FTD
-            HandleMesh(rxInfo);
+        HandleMesh(rxInfo);
 #endif
-        }
-        else if (Lowpan::FragmentHeader::IsFragmentHeader(rxInfo.mFrameData))
-        {
-            HandleFragment(rxInfo);
-        }
-        else if (Lowpan::Lowpan::IsLowpanHc(rxInfo.mFrameData))
-        {
-            HandleLowpanHc(rxInfo);
-        }
-        else
-        {
-            VerifyOrExit(rxInfo.mFrameData.GetLength() == 0, error = kErrorNotLowpanDataFrame);
+    }
+    else if (Lowpan::FragmentHeader::IsFragmentHeader(rxInfo.mFrameData))
+    {
+        HandleFragment(rxInfo);
+    }
+    else if (Lowpan::Lowpan::IsLowpanHc(rxInfo.mFrameData))
+    {
+        HandleLowpanHc(rxInfo);
+    }
+    else
+    {
+        VerifyOrExit(rxInfo.mFrameData.GetLength() == 0, error = kErrorNotLowpanDataFrame);
 
-            LogFrame("Received empty payload frame", aFrame, kErrorNone);
-        }
-
-        break;
-
-    case Mac::Frame::kTypeBeacon:
-        break;
-
-    default:
-        error = kErrorDrop;
-        break;
+        LogFrame("Received empty payload frame", aFrameInfo, kErrorNone);
     }
 
 exit:
 
     if (error != kErrorNone)
     {
-        LogFrame("Dropping rx frame", aFrame, error);
+        LogFrame("Dropping rx frame", aFrameInfo, error);
     }
 }
 
@@ -1602,15 +1633,15 @@ void MeshForwarder::LogMessage(MessageAction, const Message &, Error, const Mac:
 
 #if OT_SHOULD_LOG_AT(OT_LOG_LEVEL_INFO)
 
-void MeshForwarder::LogFrame(const char *aActionText, const Mac::Frame &aFrame, Error aError)
+void MeshForwarder::LogFrame(const char *aActionText, const Mac::Frame::ParseInfo &aFrameInfo, Error aError)
 {
     if (aError != kErrorNone)
     {
-        LogInfo("%s, aError:%s, %s", aActionText, ErrorToString(aError), aFrame.ToInfoString().AsCString());
+        LogInfo("%s, aError:%s, %s", aActionText, ErrorToString(aError), aFrameInfo.ToInfoString().AsCString());
     }
     else
     {
-        LogInfo("%s, %s", aActionText, aFrame.ToInfoString().AsCString());
+        LogInfo("%s, %s", aActionText, aFrameInfo.ToInfoString().AsCString());
     }
 }
 
@@ -1640,7 +1671,7 @@ MeshForwarder::RxInfo::InfoString MeshForwarder::RxInfo::ToString(void) const
 
 #else // #if OT_SHOULD_LOG_AT(OT_LOG_LEVEL_INFO)
 
-void MeshForwarder::LogFrame(const char *, const Mac::Frame &, Error) {}
+void MeshForwarder::LogFrame(const char *, const Mac::Frame::ParseInfo &, Error) {}
 
 void MeshForwarder::LogFragmentFrameDrop(Error, const RxInfo &, const Lowpan::FragmentHeader &) {}
 

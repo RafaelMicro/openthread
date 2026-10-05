@@ -171,8 +171,7 @@ public:
         mTxFrame802154.SetIsSecurityProcessed(false);
         mTxFrame802154.SetCsmaCaEnabled(true); // Set to true by default, only set to `false` for CSL transmission
         mTxFrame802154.SetIsHeaderUpdated(false);
-        mTxFrame802154.SetTxDelay(0);
-        mTxFrame802154.SetTxDelayBaseTime(0);
+        mTxFrame802154.ClearTargetTxTime();
         mTxFrame802154.SetTxPower(Radio::kInvalidPower);
         mTxFrame802154.SetCslIePresent(false);
 #endif
@@ -202,21 +201,6 @@ public:
 #endif
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
         mTxFrameTrel.SetChannel(aChannel);
-#endif
-    }
-
-    /**
-     * Sets the Sequence Number value on all supported radio tx frames.
-     *
-     * @param[in]  aSequence  The Sequence Number value.
-     */
-    void SetSequence(uint8_t aSequence)
-    {
-#if OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
-        mTxFrame802154.SetSequence(aSequence);
-#endif
-#if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
-        mTxFrameTrel.SetSequence(aSequence);
 #endif
     }
 
@@ -476,27 +460,6 @@ public:
     }
 #endif // OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
 
-#if OPENTHREAD_CONFIG_WAKEUP_END_DEVICE_ENABLE
-    /**
-     * Configures wake-up listening parameters in all radios.
-     *
-     * @param[in]  aEnable    Whether to enable or disable wake-up listening.
-     * @param[in]  aInterval  The wake-up listen interval in microseconds.
-     * @param[in]  aDuration  The wake-up listen duration in microseconds.
-     * @param[in]  aChannel   The wake-up channel.
-     */
-    void UpdateWakeupListening(bool aEnable, uint32_t aInterval, uint32_t aDuration, uint8_t aChannel)
-    {
-        OT_UNUSED_VARIABLE(aEnable);
-        OT_UNUSED_VARIABLE(aInterval);
-        OT_UNUSED_VARIABLE(aDuration);
-        OT_UNUSED_VARIABLE(aChannel);
-#if OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
-        mSubMac.UpdateWakeupListening(aEnable, aInterval, aDuration, aChannel);
-#endif
-    }
-#endif
-
     /**
      * Transitions all radio links to Receive.
      *
@@ -650,14 +613,11 @@ public:
 
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
     /**
-     * Sets the current MAC frame counter value from the value from a `TxFrame`.
+     * Sets the MAC frame counter in a TX frame for TREL link.
      *
-     * @param[in] TxFrame  The `TxFrame` from which to get the counter value.
-     *
-     * @retval kErrorNone            If successful.
-     * @retval kErrorInvalidState    If the raw link-layer isn't enabled.
+     * @param[in,out] aFrameInfo  The TX frame information to update.
      */
-    void SetMacFrameCounter(TxFrame &aFrame);
+    void SetMacFrameCounter(TxFrame::ParseInfo &aFrameInfo);
 #endif
 
 private:

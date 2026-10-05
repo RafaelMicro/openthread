@@ -89,7 +89,6 @@ Done
 - [networkname](#networkname)
 - [networktime](#networktime)
 - [nexthop](#nexthop)
-- [p2p](#p2p-link-extaddr-extaddr)
 - [panid](#panid)
 - [parent](#parent)
 - [parentpriority](#parentpriority)
@@ -1711,7 +1710,7 @@ TransportProtocol: tcp
 Done
 ```
 
-We can leave some of the fields as unspecified (or use value zero). The unspecified fields are replaced by the corresponding OT config option definitions `OPENTHREAD_CONFIG_DNS_CLIENT_DEFAULT_{}` to form the default query config.
+You can leave some of the fields as unspecified (or use value zero or `def`). This includes the DNS server IP address itself. Since an address has no "zero" form, use `def` (or, equivalently, the unspecified address `::`) to select the default server address. The unspecified fields are replaced by the corresponding OT config option definitions `OPENTHREAD_CONFIG_DNS_CLIENT_DEFAULT_<OPTION>` to form the default query config. Note that specifying a zero value for a boolean argument will mean _disabled_ and cannot be used to imply default behavior. For a boolean value `def` is the only option to specify the default value.
 
 ```bash
 > dns config fd00::2
@@ -1727,10 +1726,10 @@ TransportProtocol: udp
 Done
 ```
 
-This final example shows how only 'recursion desired' and the service mode are set, and all other parameters are set to their defaults:
+This final example shows how only the 'service mode' is set, and all other parameters are set to their defaults. Especially note that the boolean value 'recursion desired' is set to its default by using the `def` value, and that `def` is used for the DNS server IP address too (the literal unspecified address `::` works the same way, since it also has no "zero" form).
 
 ```bash
-> dns config :: 0 0 0 1 srv_txt_sep
+> dns config def 0 0 0 def srv_txt_sep
 Done
 
 > dns config
@@ -1748,7 +1747,7 @@ Done
 
 Send DNS Query to obtain IPv6 address for given hostname.
 
-The parameters after `hostname` are optional. Any unspecified (or zero) value for these optional parameters is replaced by the value from the current default config (`dns config`).
+The parameters after `hostname` are optional. Any unspecified (or zero or `def`) value for these optional parameters is replaced by the value from the current default config (`dns config`). This includes the DNS server IP address itself. Use `def` (or, equivalently, the unspecified address `::`) to select the server address from the current default config while still overriding later parameters explicitly.
 
 To use tcp, `OPENTHREAD_CONFIG_DNS_CLIENT_OVER_TCP_ENABLE` is required.
 
@@ -1764,6 +1763,14 @@ The DNS server IP can be an IPv4 address, which will be synthesized to an IPv6 a
 ```bash
 > dns resolve example.com 8.8.8.8
 Synthesized IPv6 DNS server address: fdde:ad00:beef:2:0:0:808:808
+DNS response for example.com. - fd4c:9574:3720:2:0:0:5db8:d822 TTL:20456
+Done
+```
+
+Using `def` for the DNS server IP leaves it unspecified, so it is replaced by the server from the current default config while the port is still explicitly overridden:
+
+```bash
+> dns resolve example.com def 53
 DNS response for example.com. - fd4c:9574:3720:2:0:0:5db8:d822 TTL:20456
 Done
 ```
@@ -3296,28 +3303,6 @@ nexthop 0x8001
 Done
 ```
 
-### p2p link extaddr \<extaddr\>
-
-Wakes up the peer identified by the extended address and establishes a peer-to-peer link with the peer.
-
-`OPENTHREAD_CONFIG_P2P_ENABLE` and `OPENTHREAD_CONFIG_WAKEUP_COORDINATOR_ENABLE` are required.
-
-```bash
-> p2p link extaddr dead00beef00cafe
-Done
-```
-
-### p2p unlink \<extaddress\>
-
-Tears down the P2P link identified by the extended address.
-
-`OPENTHREAD_CONFIG_P2P_ENABLE` is required.
-
-```bash
-> p2p unlink dead00beef00cafe
-Done
-```
-
 ### panid
 
 Get the IEEE 802.15.4 PAN ID value.
@@ -4844,7 +4829,7 @@ Factory Diagnostics module is enabled only when building OpenThread with `OPENTH
 
 Get the wake-up channel.
 
-Requires `OPENTHREAD_CONFIG_WAKEUP_COORDINATOR_ENABLE` or `OPENTHREAD_CONFIG_WAKEUP_END_DEVICE_ENABLE`.
+Requires `OPENTHREAD_CONFIG_TD_WAKE_INITIATOR_ENABLE` or `OPENTHREAD_CONFIG_TD_WAKE_LISTENER_ENABLE`.
 
 ```bash
 > wakeup channel
@@ -4856,7 +4841,7 @@ Done
 
 Set the wake-up channel.
 
-Requires `OPENTHREAD_CONFIG_WAKEUP_COORDINATOR_ENABLE` or `OPENTHREAD_CONFIG_WAKEUP_END_DEVICE_ENABLE`.
+Requires `OPENTHREAD_CONFIG_TD_WAKE_INITIATOR_ENABLE` or `OPENTHREAD_CONFIG_TD_WAKE_LISTENER_ENABLE`.
 
 ```bash
 > wakeup channel 12
@@ -4867,7 +4852,7 @@ Done
 
 Get the wake-up listen interval and duration.
 
-Requires `OPENTHREAD_CONFIG_WAKEUP_END_DEVICE_ENABLE`.
+Requires `OPENTHREAD_CONFIG_TD_WAKE_LISTENER_ENABLE`.
 
 ```bash
 > wakeup parameters
@@ -4880,7 +4865,7 @@ Done
 
 Set the wake-up listen interval and duration.
 
-Requires `OPENTHREAD_CONFIG_WAKEUP_END_DEVICE_ENABLE`.
+Requires `OPENTHREAD_CONFIG_TD_WAKE_LISTENER_ENABLE`.
 
 ```bash
 > wakeup parameters 1000000 8000
@@ -4891,7 +4876,7 @@ Done
 
 Show the state of wake-up listening feature.
 
-`OPENTHREAD_CONFIG_WAKEUP_END_DEVICE_ENABLE` is required.
+`OPENTHREAD_CONFIG_TD_WAKE_LISTENER_ENABLE` is required.
 
 ```bash
 > wakeup listen
@@ -4903,7 +4888,7 @@ Done
 
 Enable/disable listening for wake-up frames.
 
-`OPENTHREAD_CONFIG_WAKEUP_END_DEVICE_ENABLE` is required.
+`OPENTHREAD_CONFIG_TD_WAKE_LISTENER_ENABLE` is required.
 
 ```bash
 > wakeup listen enable
@@ -4914,7 +4899,7 @@ Done
 
 Wakes a Wake-up End Device.
 
-`OPENTHREAD_CONFIG_WAKEUP_COORDINATOR_ENABLE` is required.
+`OPENTHREAD_CONFIG_TD_WAKE_INITIATOR_ENABLE` is required.
 
 ```bash
 > wakeup wake 1ece0a6c4653a7c1 7500 1090

@@ -35,7 +35,7 @@
 #include <sys/time.h>
 #include <openthread/platform/flash.h>
 
-#if OPENTHREAD_CONFIG_BLE_TCAT_ENABLE
+#if OPENTHREAD_CONFIG_BLE_TCAT_ENABLE && (OPENTHREAD_FTD || OPENTHREAD_MTD)
 #include <openthread/tcat.h>
 #include <openthread/platform/ble.h>
 #endif
@@ -319,7 +319,7 @@ OT_TOOL_WEAK otError otPlatSettingsGet(otInstance *, uint16_t aKey, int aIndex, 
         return OT_ERROR_NOT_FOUND;
     }
 
-    if (aIndex > setting->second.size())
+    if (aIndex < 0 || static_cast<size_t>(aIndex) >= setting->second.size())
     {
         return OT_ERROR_NOT_FOUND;
     }
@@ -373,7 +373,13 @@ OT_TOOL_WEAK otError otPlatSettingsDelete(otInstance *, uint16_t aKey, int aInde
         return OT_ERROR_NOT_FOUND;
     }
 
-    if (aIndex >= setting->second.size())
+    if (aIndex == -1)
+    {
+        settings.erase(setting);
+        return OT_ERROR_NONE;
+    }
+
+    if (aIndex < 0 || static_cast<size_t>(aIndex) >= setting->second.size())
     {
         return OT_ERROR_NOT_FOUND;
     }
@@ -537,6 +543,8 @@ OT_TOOL_WEAK void otPlatInfraIfDhcp6PdClientSend(otInstance   *aInstance,
 #endif // OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE
 
 #if OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE
+
+bool otPlatCryptoIsKeyRefValid(otCryptoKeyRef aKeyRef) { return (aKeyRef != OPENTHREAD_CONFIG_CRYPTO_INVALID_KEY_REF); }
 
 otError otPlatCryptoImportKey(otCryptoKeyRef      *aKeyRef,
                               otCryptoKeyType      aKeyType,
@@ -840,7 +848,7 @@ OT_TOOL_WEAK otPlatMcuPowerState otPlatGetMcuPowerState(otInstance *aInstance) {
 
 OT_TOOL_WEAK otError otPlatSetMcuPowerState(otInstance *aInstance, otPlatMcuPowerState aState) { return OT_ERROR_NONE; }
 #endif // OPENTHREAD_CONFIG_NCP_ENABLE_MCU_POWER_STATE_CONTROL
-#if OPENTHREAD_CONFIG_BLE_TCAT_ENABLE
+#if OPENTHREAD_CONFIG_BLE_TCAT_ENABLE && (OPENTHREAD_FTD || OPENTHREAD_MTD)
 
 uint8_t  sPlatBleLastAdvSetData[OT_TCAT_ADVERTISEMENT_MAX_LEN];
 uint16_t sPlatBleLastAdvSetDataLen = 0;
@@ -940,7 +948,7 @@ otError otPlatBleGapAdvUpdateData(otInstance *aInstance, uint8_t *aAdvertisement
     return otPlatBleGapAdvSetData(aInstance, aAdvertisementData, aAdvertisementLen);
 }
 
-#endif // OPENTHREAD_CONFIG_BLE_TCAT_ENABLE
+#endif // OPENTHREAD_CONFIG_BLE_TCAT_ENABLE && (OPENTHREAD_FTD || OPENTHREAD_MTD)
 
 #if OPENTHREAD_CONFIG_PLATFORM_DNSSD_ENABLE
 
