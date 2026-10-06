@@ -35,6 +35,7 @@
 #include "log.h"
 #include "mcu.h"
 #include "timer.h"
+#include "sysctrl.h"
 
 static TimerHandle_t otAlarm_timerHandle = NULL;
 static uint32_t otAlarm_offset = 0xFFFFFFF;
@@ -76,6 +77,7 @@ void ot_alarmInit(void) {
     slowtimern_t* TIMER = SLOWTIMER1;
     NVIC_DisableIRQ((IRQn_Type)(SlowTimer1_IRQn));
     NVIC_SetPriority((IRQn_Type)(SlowTimer1_IRQn), 2);
+    enable_perclk(TIMER4_32K_CLK);
     #endif
 
     TIMER->load = 0;
