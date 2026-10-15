@@ -872,7 +872,6 @@ otError otPlatRadioTransmit(otInstance *aInstance, otRadioFrame *aFrame)
             lmac15p4_channel_set((lmac154_channel_t)(sCurrentChannel - kMinChannel));
         }
     }
-    hosal_lpm_ioctrl(HOSAL_LPM_SET_POWER_LEVEL, HOSAL_LOW_POWER_LEVEL_NORMAL);
     RfMcu_HostCtrlAhb(COMM_SUBSYSTEM_HOST_CTRL_WAKE_UP);
 #if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
     if(sCslPeriod > 0 && !aFrame->mInfo.mTxInfo.mIsHeaderUpdated)
@@ -913,6 +912,9 @@ otError otPlatRadioTransmit(otInstance *aInstance, otRadioFrame *aFrame)
     {
         log_error("Tx failed !");
         OT_NOTIFY(OT_SYSTEM_EVENT_RADIO_TX_NO_ACK);
+    }
+    else {
+        hosal_lpm_ioctrl(HOSAL_LPM_SET_POWER_LEVEL, HOSAL_LOW_POWER_LEVEL_NORMAL);
     }
 
     otPlatRadioTxStarted(aInstance, aFrame);
