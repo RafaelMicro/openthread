@@ -58,6 +58,7 @@ extern "C" {
 #define FOTA_RESULT_ERR_CHECK_IMAGE_CRC_FAIL                0x06
 #define FOTA_RESULT_ERR_TARGET_ADDR_IS_ILLEGAL              0x07
 #define FOTA_RESULT_ERR_COMPRESS_DECODE_FAIL                0x08
+#define FOTA_RESULT_ERR_VERSION_ROLLBACK                    0x09
 
 #define OTA_FLASH_START FOTA_UPDATE_BUFFER_FW_ADDRESS_1MB
 #define RAFAEL_OTA_URL_DATA "ota/data"
