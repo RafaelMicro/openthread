@@ -17,7 +17,7 @@ sdk_add_include_directories(
 )
 
 set(OT_PACKAGE_NAME "OPENTHREAD" CACHE STRING "OpenThread Package Name")
-set(OT_PACKAGE_VERSION "v2026.10.0" CACHE STRING "OpenThread Package Version")
+set(OT_PACKAGE_VERSION "v2026.11.0" CACHE STRING "OpenThread Package Version")
 
 # mebtls configuration
 add_compile_options(
