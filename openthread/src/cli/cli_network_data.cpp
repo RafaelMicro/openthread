@@ -96,11 +96,6 @@ void NetworkData::PrefixFlagsToString(const otBorderRouterConfig &aConfig, Flags
         *flagsPtr++ = 'n';
     }
 
-    if (aConfig.mDp)
-    {
-        *flagsPtr++ = 'D';
-    }
-
     *flagsPtr = '\0';
 }
 
@@ -804,7 +799,6 @@ exit:
  *   * o: On Mesh flag
  *   * s: Stable flag
  *   * n: Nd Dns flag
- *   * D: Domain Prefix flag (only available for Thread 1.2).
  * * Preference `high`, `med`, or `low`
  * * RLOC16 of device which added the on-mesh prefix
  * @par
@@ -935,7 +929,7 @@ template <> otError NetworkData::Process<Cmd("full")>(Arg aArgs[])
      */
     if (aArgs[0].IsEmpty())
     {
-        OutputLine(mFullCallbackWasCalled ? "yes" : "no");
+        OutputLine("%s", ToYesNo(mFullCallbackWasCalled));
     }
     /**
      * @cli netdata full reset
@@ -963,25 +957,20 @@ exit:
 
 otError NetworkData::Process(Arg aArgs[])
 {
-#define CmdEntry(aCommandString)                                   \
-    {                                                              \
-        aCommandString, &NetworkData::Process<Cmd(aCommandString)> \
-    }
+#define CmdEntry(aCommandString) {aCommandString, &NetworkData::Process<Cmd(aCommandString)>}
 
     static constexpr Command kCommands[] = {
 #if OPENTHREAD_CONFIG_BORDER_ROUTER_SIGNAL_NETWORK_DATA_FULL
         CmdEntry("full"),
 #endif
-        CmdEntry("length"),
-        CmdEntry("maxlength"),
+        CmdEntry("length"),    CmdEntry("maxlength"),
 #if OPENTHREAD_CONFIG_NETDATA_PUBLISHER_ENABLE
         CmdEntry("publish"),
 #endif
 #if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE || OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE
         CmdEntry("register"),
 #endif
-        CmdEntry("show"),
-        CmdEntry("steeringdata"),
+        CmdEntry("show"),      CmdEntry("steeringdata"),
 #if OPENTHREAD_CONFIG_NETDATA_PUBLISHER_ENABLE
         CmdEntry("unpublish"),
 #endif

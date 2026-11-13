@@ -31,8 +31,8 @@
  *   This file includes miscellaneous compile-time configuration constants for OpenThread.
  */
 
-#ifndef CONFIG_MISC_H_
-#define CONFIG_MISC_H_
+#ifndef OT_CORE_CONFIG_MISC_H_
+#define OT_CORE_CONFIG_MISC_H_
 
 /**
  * @addtogroup config-misc
@@ -43,6 +43,7 @@
  * @{
  */
 
+#include "config/border_routing.h"
 #include "config/coap.h"
 #include "config/srp_server.h"
 
@@ -120,7 +121,6 @@
  *
  * On FTD/MTD builds this feature is now mandatory and MUST be enabled. This config is therefore only applicable for
  * RADIO/RCP builds.
- *
  */
 #ifndef OPENTHREAD_CONFIG_UPTIME_ENABLE
 #define OPENTHREAD_CONFIG_UPTIME_ENABLE (OPENTHREAD_FTD || OPENTHREAD_MTD)
@@ -195,9 +195,15 @@
  * @def OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS
  *
  * The number of message buffers in the buffer pool.
+ *
+ * By default, this is set to 256 when `OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE` is enabled, and 44 otherwise.
  */
 #ifndef OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS
+#if OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE
+#define OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS 256
+#else
 #define OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS 44
+#endif
 #endif
 
 /**
@@ -312,6 +318,15 @@
 #endif
 
 /**
+ * @def OPENTHREAD_CONFIG_MESHCOP_STEERING_DATA_API_ENABLE
+ *
+ * Define as 1 to enable the MeshCoP Steering Data public APIs (in `openthread/steering_data.h`).
+ */
+#ifndef OPENTHREAD_CONFIG_MESHCOP_STEERING_DATA_API_ENABLE
+#define OPENTHREAD_CONFIG_MESHCOP_STEERING_DATA_API_ENABLE 0
+#endif
+
+/**
  * @def OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE
  *
  * Enable the external heap.
@@ -335,7 +350,11 @@
  * Define as 1 to enable assert function `OT_ASSERT()` within OpenThread code and its libraries.
  */
 #ifndef OPENTHREAD_CONFIG_ASSERT_ENABLE
+#ifndef NDEBUG
 #define OPENTHREAD_CONFIG_ASSERT_ENABLE 1
+#else
+#define OPENTHREAD_CONFIG_ASSERT_ENABLE 0
+#endif
 #endif
 
 /**
@@ -513,15 +532,6 @@
 #endif
 
 /**
- * @def OPENTHREAD_CONFIG_DUA_ENABLE
- *
- * Define as 1 to support Thread 1.2 Domain Unicast Address feature.
- */
-#ifndef OPENTHREAD_CONFIG_DUA_ENABLE
-#define OPENTHREAD_CONFIG_DUA_ENABLE 0
-#endif
-
-/**
  * @def OPENTHREAD_CONFIG_MLR_ENABLE
  *
  * Define as 1 to support Thread 1.2 Multicast Listener Registration feature.
@@ -618,7 +628,25 @@
 #endif
 
 /**
+ * @def OPENTHREAD_CONFIG_USE_STD_NEW
+ *
+ * Define 1 to enable using std <new>.
+ */
+#ifndef OPENTHREAD_CONFIG_USE_STD_NEW
+#define OPENTHREAD_CONFIG_USE_STD_NEW 0
+#endif
+
+/**
+ * @def OPENTHREAD_PLATFORM_NEXUS
+ *
+ * Define 1 to enable nexus platform.
+ */
+#ifndef OPENTHREAD_PLATFORM_NEXUS
+#define OPENTHREAD_PLATFORM_NEXUS 0
+#endif
+
+/**
  * @}
  */
 
-#endif // CONFIG_MISC_H_
+#endif // OT_CORE_CONFIG_MISC_H_

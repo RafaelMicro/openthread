@@ -31,8 +31,8 @@
  *   This file includes definitions for forwarding IPv6 datagrams across the Thread mesh.
  */
 
-#ifndef MESH_FORWARDER_HPP_
-#define MESH_FORWARDER_HPP_
+#ifndef OT_CORE_THREAD_MESH_FORWARDER_HPP_
+#define OT_CORE_THREAD_MESH_FORWARDER_HPP_
 
 #include "openthread-core-config.h"
 
@@ -63,10 +63,6 @@ namespace Mle {
 class DiscoverScanner;
 }
 
-namespace Utils {
-class HistoryTracker;
-}
-
 /**
  * @addtogroup core-mesh-forwarding
  *
@@ -88,6 +84,7 @@ class MeshForwarder : public InstanceLocator, private NonCopyable
     friend class Ip6::Ip6;
     friend class Mle::DiscoverScanner;
     friend class TimeTicker;
+    friend class ot::MessagePool;
 
 public:
     /**
@@ -165,33 +162,21 @@ public:
     void SetRxOnWhenIdle(bool aRxOnWhenIdle);
 
 #if OPENTHREAD_FTD
-    typedef IndirectSender::MessageChecker MessageChecker; ///< General predicate function checking a message.
-
     /**
      * Removes and frees messages queued for a child, based on a given predicate.
      *
      * The `aChild` can be either sleepy or non-sleepy.
      *
-     * @param[in] aChild            The child whose messages are to be evaluated.
-     * @param[in] aMessageChecker   The predicate function to filter messages.
+     * @param[in] aChild    The child whose messages are to be evaluated.
+     * @param[in] aChecker  The predicate function to filter messages.
      */
-    void RemoveMessagesForChild(Child &aChild, MessageChecker aMessageChecker);
+    void RemoveMessagesForChild(Child &aChild, Message::Checker aChecker);
 #endif
 
     /**
      * Frees unicast/multicast MLE Data Responses from Send Message Queue if any.
      */
     void RemoveDataResponseMessages(void);
-
-    /**
-     * Evicts the message with lowest priority in the send queue.
-     *
-     * @param[in]  aPriority  The highest priority level of the evicted message.
-     *
-     * @retval kErrorNone       Successfully evicted a low priority message.
-     * @retval kErrorNotFound   No low priority messages available to evict.
-     */
-    Error EvictMessage(Message::Priority aPriority);
 
     /**
      * Retrieves information about the send queue and the reassembly queue.
@@ -269,8 +254,8 @@ public:
     /**
      * Handles a deferred ack.
      *
-     * Some radio links can use deferred ack logic, where a tx request always report `HandleSentFrame()` quickly. The
-     * link layer would wait for the ack and report it at a later time using this method.
+     * Some radio links can use deferred ack logic, where a tx request always reports `HandleFrameTxDone()` quickly.
+     * The link layer would wait for the ack and report it at a later time using this method.
      *
      * The link layer is expected to call `HandleDeferredAck()` (with success or failure status) for every tx request
      * on the radio link.
@@ -303,6 +288,20 @@ private:
     static constexpr uint32_t kTimeInQueueDropMsg = OPENTHREAD_CONFIG_DELAY_AWARE_QUEUE_MANAGEMENT_DROP_MSG_INTERVAL;
 #endif
 
+    enum EvictReason : uint8_t // Used in EvictMessage()
+    {
+        kEvictReasonNoMessageBuffer,
+        kEvictReasonDirectTxQueueAtLimit,
+    };
+
+#if OPENTHREAD_FTD
+    enum PriorityGuard : uint8_t // Used in FindMessageToEvict()
+    {
+        kLowerPriorityThan,
+        kEqualOrHigherPriorityThan,
+    };
+#endif
+
     enum MessageAction : uint8_t
     {
         kMessageReceive,         // Indicates that the message was received.
@@ -310,13 +309,12 @@ private:
         kMessagePrepareIndirect, // Indicates that the message is being prepared for indirect tx.
         kMessageDrop,            // Indicates that the outbound message is dropped (e.g., dst unknown).
         kMessageReassemblyDrop,  // Indicates that the message is being dropped from reassembly list.
-        kMessageEvict,           // Indicates that the message was evicted.
+        kMessageEvict,           // Indicates that the message was evicted due to no available message buffers.
+        kMessageFullQueueEvict,  // Indicates that a lower priority message eviction due to direct tx queue at limit.
+        kMessageFullQueueDrop,   // Indicates message drop due to direct tx queue at limit.
 #if OPENTHREAD_CONFIG_DELAY_AWARE_QUEUE_MANAGEMENT_ENABLE
         kMessageMarkEcn,       // Indicates that ECN is marked on an outbound message by delay-aware queue management.
         kMessageQueueMgmtDrop, // Indicates that an outbound message is dropped by delay-aware queue management.
-#endif
-#if (OPENTHREAD_CONFIG_MAX_FRAMES_IN_DIRECT_TX_QUEUE > 0)
-        kMessageFullQueueDrop, // Indicates message drop due to reaching max allowed frames in direct tx queue.
 #endif
     };
 
@@ -436,23 +434,11 @@ private:
 #endif
     void     UpdateEidRlocCacheAndStaleChild(RxInfo &aRxInfo);
     Error    FrameToMessage(RxInfo &aRxInfo, uint16_t aDatagramSize, Message *&aMessage);
-    void     GetMacSourceAddress(const Ip6::Address &aIp6Addr, Mac::Address &aMacAddr);
     Message *PrepareNextDirectTransmission(void);
     void     HandleMesh(RxInfo &aRxInfo);
     void     ResolveRoutingLoops(uint16_t aSourceRloc16, uint16_t aDestRloc16);
     void     HandleFragment(RxInfo &aRxInfo);
     void     HandleLowpanHc(RxInfo &aRxInfo);
-
-    void     PrepareMacHeaders(Mac::TxFrame &aTxFrame, Mac::TxFrame::Info &aTxFrameInfo, const Message *aMessage);
-    uint16_t PrepareDataFrame(Mac::TxFrame         &aFrame,
-                              Message              &aMessage,
-                              const Mac::Addresses &aMacAddrs,
-                              bool                  aAddMeshHeader,
-                              uint16_t              aMeshSource,
-                              uint16_t              aMeshDest,
-                              bool                  aAddFragHeader);
-    uint16_t PrepareDataFrameWithNoMeshHeader(Mac::TxFrame &aFrame, Message &aMessage, const Mac::Addresses &aMacAddrs);
-    void     PrepareEmptyFrame(Mac::TxFrame &aFrame, const Mac::Address &aMacDest, bool aAckRequest);
 
 #if OPENTHREAD_CONFIG_DELAY_AWARE_QUEUE_MANAGEMENT_ENABLE
     Error UpdateEcnOrDrop(Message &aMessage, bool aPreparingToSend);
@@ -462,7 +448,6 @@ private:
     bool IsDirectTxQueueOverMaxFrameThreshold(void) const;
     void ApplyDirectTxQueueLimit(Message &aMessage);
 #endif
-    void  SendMesh(Message &aMessage, Mac::TxFrame &aFrame);
     void  SendDestinationUnreachable(uint16_t aMeshSource, const Ip6::Headers &aIp6Headers);
     Error UpdateIp6Route(Message &aMessage);
     Error UpdateIp6RouteFtd(const Ip6::Header &aIp6Header, Message &aMessage);
@@ -474,16 +459,17 @@ private:
                                  Message::Priority       aPriority);
     Error HandleDatagram(Message &aMessage, const Mac::Address &aMacSource);
     void  ClearReassemblyList(void);
+    Error RemoveUnsecureReassemblyMessage(EvictReason aEvictReason);
     void  HandleDiscoverComplete(void);
 
-    void          HandleReceivedFrame(Mac::RxFrame &aFrame);
-    Mac::TxFrame *HandleFrameRequest(Mac::TxFrames &aTxFrames);
-    Neighbor     *UpdateNeighborOnSentFrame(Mac::TxFrame       &aFrame,
-                                            Error               aError,
-                                            const Mac::Address &aMacDest,
-                                            bool                aIsDataPoll);
+    void          HandleReceivedFrame(Mac::RxFrame::ParseInfo &aFrameInfo);
+    Mac::TxFrame *PrepareFrame(Mac::TxFrames &aTxFrames);
+    Neighbor     *UpdateNeighborOnFrameTxDone(Mac::TxFrame::ParseInfo &aFrameInfo,
+                                              Error                    aError,
+                                              const Mac::Address      &aMacDest,
+                                              bool                     aIsDataPoll);
     void UpdateNeighborLinkFailures(Neighbor &aNeighbor, Error aError, bool aAllowNeighborRemove, uint8_t aFailLimit);
-    void HandleSentFrame(Mac::TxFrame &aFrame, Error aError);
+    void HandleFrameTxDone(Mac::TxFrame::ParseInfo &aFrameInfo, Error aError);
     void UpdateSendMessage(Error aFrameTxError, Mac::Address &aMacDest, Neighbor *aNeighbor);
     void FinalizeMessageDirectTx(Message &aMessage, Error aError);
     void FinalizeAndRemoveMessage(Message &aMessage, Error aError, MessageAction aAction);
@@ -492,9 +478,12 @@ private:
     void HandleTimeTick(void);
     void ScheduleTransmissionTask(void);
 
+    Error EvictMessage(Message::Priority aPriority, EvictReason aEvictReason);
     Error GetFramePriority(RxInfo &aRxInfo, Message::Priority &aPriority);
 
 #if OPENTHREAD_FTD
+    Message      *FindMessageToEvict(PriorityGuard aGuard, Message::Priority aPriority, Message::Checker aChecker);
+    void          DetermineDirectOrIndirectTx(Message &aMessage);
     void          FinalizeMessageIndirectTxs(Message &aMessage);
     FwdFrameInfo *FindFwdFrameInfoEntry(uint16_t aSrcRloc16, uint16_t aDatagramTag);
     bool          UpdateFwdFrameInfoArrayOnTimeTick(void);
@@ -516,7 +505,7 @@ private:
     void LogMessage(MessageAction aAction, const Message &aMessage);
     void LogMessage(MessageAction aAction, const Message &aMessage, Error aError);
     void LogMessage(MessageAction aAction, const Message &aMessage, Error aError, const Mac::Address *aAddress);
-    void LogFrame(const char *aActionText, const Mac::Frame &aFrame, Error aError);
+    void LogFrame(const char *aActionText, const Mac::Frame::ParseInfo &aFrameInfo, Error aError);
     void LogFragmentFrameDrop(Error aError, const RxInfo &aRxInfo, const Lowpan::FragmentHeader &aFragmentHeader);
     void LogLowpanHcFrameDrop(Error aError, const RxInfo &aRxInfo);
 
@@ -566,7 +555,6 @@ private:
 
     PriorityQueue mSendQueue;
     MessageQueue  mReassemblyList;
-    uint16_t      mFragTag;
     uint16_t      mMessageNextOffset;
 
     Message *mSendMessage;
@@ -608,4 +596,4 @@ private:
 
 } // namespace ot
 
-#endif // MESH_FORWARDER_HPP_
+#endif // OT_CORE_THREAD_MESH_FORWARDER_HPP_

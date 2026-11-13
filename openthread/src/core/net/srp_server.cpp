@@ -80,7 +80,7 @@ Server::Server(Instance &aInstance)
     , mLeaseTimer(aInstance)
     , mOutstandingUpdatesTimer(aInstance)
     , mCompletedUpdateTask(aInstance)
-    , mServiceUpdateId(Random::NonCrypto::GetUint32())
+    , mServiceUpdateId(Random::NonCrypto::Generate<uint32_t>())
     , mPort(kUninitializedPort)
     , mState(kStateDisabled)
     , mAddressMode(kDefaultAddressMode)
@@ -303,7 +303,7 @@ bool Server::NetDataContainsOtherSrpServers(void) const
     bool                                    contains = false;
     NetworkData::Service::DnsSrpAnycastInfo anycastInfo;
     NetworkData::Service::DnsSrpUnicastInfo unicastInfo;
-    NetworkData::Service::Manager::Iterator iterator;
+    NetworkData::Service::Iterator          iterator(GetInstance());
 
     if (Get<NetworkData::Service::Manager>().FindPreferredDnsSrpAnycastInfo(anycastInfo) == kErrorNone)
     {
@@ -313,8 +313,7 @@ bool Server::NetDataContainsOtherSrpServers(void) const
 
     iterator.Reset();
 
-    if (Get<NetworkData::Service::Manager>().GetNextDnsSrpUnicastInfo(
-            iterator, NetworkData::Service::kAddrInServiceData, unicastInfo) == kErrorNone)
+    if (iterator.GetNextDnsSrpUnicastInfo(NetworkData::Service::kAddrInServiceData, unicastInfo) == kErrorNone)
     {
         contains = true;
         ExitNow();
@@ -322,8 +321,7 @@ bool Server::NetDataContainsOtherSrpServers(void) const
 
     iterator.Reset();
 
-    while (Get<NetworkData::Service::Manager>().GetNextDnsSrpUnicastInfo(
-               iterator, NetworkData::Service::kAddrInServerData, unicastInfo) == kErrorNone)
+    while (iterator.GetNextDnsSrpUnicastInfo(NetworkData::Service::kAddrInServerData, unicastInfo) == kErrorNone)
     {
         if (!Get<Mle::Mle>().HasRloc16(unicastInfo.mRloc16) &&
             Get<Mle::Mle>().GetMeshLocalEid() != unicastInfo.mSockAddr.GetAddress())
@@ -438,7 +436,7 @@ Error Server::SetDomain(const char *aDomain)
 
         memcpy(buf, aDomain, length);
         buf[length]     = '.';
-        buf[length + 1] = '\0';
+        buf[length + 1] = kNullChar;
 
         error = mDomain.Set(buf);
     }
@@ -456,7 +454,7 @@ void Server::RemoveHost(Host *aHost, RetainName aRetainName)
 {
     VerifyOrExit(aHost != nullptr);
 
-    aHost->mLease = 0;
+    aHost->SetLease(0);
     aHost->ClearResources();
 
     if (aRetainName)
@@ -465,7 +463,7 @@ void Server::RemoveHost(Host *aHost, RetainName aRetainName)
     }
     else
     {
-        aHost->mKeyLease = 0;
+        aHost->SetKeyLease(0);
         IgnoreError(mHosts.Remove(*aHost));
         LogInfo("Fully remove host %s", aHost->GetFullName());
     }
@@ -509,15 +507,17 @@ bool Server::HasNameConflictsWith(Host &aHost) const
         ExitNow(hasConflicts = true);
     }
 
-    for (const Service &service : aHost.mServices)
+    for (const Host &host : mHosts)
     {
-        // Check on all hosts for a matching service with the same
-        // instance name and if found, verify that it has the same
-        // key.
-
-        for (const Host &host : mHosts)
+        if (aHost.mKey == host.mKey)
         {
-            if (host.HasService(service.GetInstanceName()) && (aHost.mKey != host.mKey))
+            continue;
+        }
+
+        // Verify that no allocated services have the same instance name.
+        for (const Service &service : aHost.mServices)
+        {
+            if (host.HasService(service.GetInstanceName()))
             {
                 LogWarn("Name conflict: service name %s has already been allocated", service.GetInstanceName());
                 ExitNow(hasConflicts = true);
@@ -629,8 +629,11 @@ void Server::CommitSrpUpdate(Error                    aError,
 
     if (grantedKeyLease == 0)
     {
-        VerifyOrExit(existingHost != nullptr);
-        LogInfo("Fully remove host %s", aHost.GetFullName());
+        if (existingHost != nullptr)
+        {
+            LogInfo("Fully remove host %s", aHost.GetFullName());
+        }
+
         aHost.Free();
         ExitNow();
     }
@@ -639,9 +642,10 @@ void Server::CommitSrpUpdate(Error                    aError,
 
     for (Service &service : aHost.mServices)
     {
-        service.mLease       = grantedLease;
-        service.mKeyLease    = grantedKeyLease;
-        service.mTtl         = grantedTtl;
+        service.SetLease(service.mIsDeleted ? 0 : grantedLease);
+        service.SetKeyLease(grantedKeyLease);
+        service.SetTtl(grantedTtl);
+
         service.mIsCommitted = true;
 
 #if OT_SHOULD_LOG_AT(OT_LOG_LEVEL_INFO)
@@ -711,7 +715,7 @@ void Server::CommitSrpUpdate(Error                    aError,
 
         mHasRegisteredAnyService = true;
         info.SetPort(GetSocket().mSockName.mPort);
-        IgnoreError(Get<Settings>().Save(info));
+        Get<Settings>().Save(info);
     }
 #endif
 
@@ -723,8 +727,9 @@ void Server::CommitSrpUpdate(Error                    aError,
 exit:
     if (aMessageInfo != nullptr)
     {
-        if (aError == kErrorNone && !(grantedLease == hostLease && grantedKeyLease == hostKeyLease))
+        if (aError == kErrorNone)
         {
+            // RFC 9664: server MUST echo the Update Lease option in any successful (RCODE=0) response.
             SendResponse(aDnsHeader, grantedLease, grantedKeyLease, useShortLease, *aMessageInfo);
         }
         else
@@ -1308,7 +1313,7 @@ Error Server::ProcessServiceDescriptionInstructions(Host            &aHost,
             VerifyOrExit(!service->mParsedSrv, error = kErrorParse);
             service->mParsedSrv = true;
 
-            service->mTtl      = srvRecord.GetTtl();
+            service->SetTtl(srvRecord.GetTtl());
             service->mPriority = srvRecord.GetPriority();
             service->mWeight   = srvRecord.GetWeight();
             service->mPort     = srvRecord.GetPort();
@@ -1392,8 +1397,8 @@ Error Server::ProcessAdditionalSection(Host *aHost, const Message &aMessage, Mes
             service.mIsDeleted = true;
         }
 
-        service.mLease    = service.mIsDeleted ? 0 : leaseOption.GetLeaseInterval();
-        service.mKeyLease = leaseOption.GetKeyLeaseInterval();
+        service.SetLease(service.mIsDeleted ? 0 : leaseOption.GetLeaseInterval());
+        service.SetKeyLease(leaseOption.GetKeyLeaseInterval());
     }
 
     // If the client included the short variant of Lease Option,
@@ -1522,7 +1527,7 @@ void Server::HandleUpdate(Host &aHost, const MessageMetadata &aMetadata)
 
         SuccessOrExit(error = service->mServiceName.Set(existingService.GetServiceName()));
         service->mIsDeleted = true;
-        service->mKeyLease  = existingService.mKeyLease;
+        service->SetKeyLease(existingService.GetKeyLease());
     }
 
 exit:
@@ -1573,7 +1578,7 @@ void Server::InformUpdateHandlerOrCommit(Error aError, Host &aHost, const Messag
     }
     else
     {
-        LogInfo("Error %s processing received SRP update", ErrorToString(aError));
+        LogInfoOnError(aError, "process received SRP update");
     }
 #endif // OT_SHOULD_LOG_AT(OT_LOG_LEVEL_INFO)
 
@@ -1867,21 +1872,14 @@ void Server::HandleOutstandingUpdatesTimer(void)
 
 const char *Server::AddressModeToString(AddressMode aMode)
 {
-    static const char *const kAddressModeStrings[] = {
-        "unicast",           // (0) kAddressModeUnicast
-        "anycast",           // (1) kAddressModeAnycast
-        "unicast-force-add", // (2) kAddressModeUnicastForceAdd
-    };
+#define AddressModeMapList(_)         \
+    _(kAddressModeUnicast, "unicast") \
+    _(kAddressModeAnycast, "anycast") \
+    _(kAddressModeUnicastForceAdd, "unicast-force-add")
 
-    struct EnumCheck
-    {
-        InitEnumValidatorCounter();
-        ValidateNextEnum(kAddressModeUnicast);
-        ValidateNextEnum(kAddressModeAnycast);
-        ValidateNextEnum(kAddressModeUnicastForceAdd);
-    };
+    DefineEnumStringArray(AddressModeMapList);
 
-    return kAddressModeStrings[aMode];
+    return kStrings[aMode];
 }
 
 void Server::UpdateResponseCounters(Dns::UpdateHeader::Response aResponseCode)
@@ -1945,21 +1943,64 @@ exit:
 #endif
 
 //---------------------------------------------------------------------------------------------------------------------
+// Server::LeaseTracker
+
+void Server::LeaseTracker::Init(TimeMilli aUpdateTime)
+{
+    mLease      = 0;
+    mKeyLease   = 0;
+    mTtl        = 0;
+    mUpdateTime = aUpdateTime;
+}
+
+TimeMilli Server::LeaseTracker::GetExpireTime(void) const { return mUpdateTime + Time::SecToMsec(mLease); }
+
+TimeMilli Server::LeaseTracker::GetKeyExpireTime(void) const { return mUpdateTime + Time::SecToMsec(mKeyLease); }
+
+void Server::LeaseTracker::GetLeaseInfo(LeaseInfo &aLeaseInfo) const
+{
+    TimeMilli now = TimerMilli::GetNow();
+
+    aLeaseInfo.mLease             = Time::SecToMsec(mLease);
+    aLeaseInfo.mKeyLease          = Time::SecToMsec(mKeyLease);
+    aLeaseInfo.mRemainingLease    = (mLease != 0) ? GetExpireTime().DetermineRemainingDurationFrom(now) : 0;
+    aLeaseInfo.mRemainingKeyLease = GetKeyExpireTime().DetermineRemainingDurationFrom(now);
+}
+
+Error Server::LeaseTracker::ProcessTtl(uint32_t aTtl)
+{
+    // This method processes the TTL value received in a resource record.
+    //
+    // If no TTL value is stored, this method will set the stored value to @p aTtl and return `kErrorNone`.
+    // If a TTL value is stored and @p aTtl equals the stored value, this method returns `kErrorNone`.
+    // Otherwise, this method returns `kErrorRejected`.
+
+    Error error = kErrorRejected;
+
+    VerifyOrExit(aTtl && (mTtl == 0 || mTtl == aTtl));
+
+    mTtl = aTtl;
+
+    error = kErrorNone;
+
+exit:
+    return error;
+}
+
+//---------------------------------------------------------------------------------------------------------------------
 // Server::Service
 
 Error Server::Service::Init(const char *aInstanceName, const char *aInstanceLabel, Host &aHost, TimeMilli aUpdateTime)
 {
     Error error;
 
+    LeaseTracker::Init(aUpdateTime);
+
     mNext        = nullptr;
     mHost        = &aHost;
     mPriority    = 0;
     mWeight      = 0;
-    mTtl         = 0;
     mPort        = 0;
-    mLease       = 0;
-    mKeyLease    = 0;
-    mUpdateTime  = aUpdateTime;
     mIsDeleted   = false;
     mIsCommitted = false;
 #if OPENTHREAD_CONFIG_SRP_SERVER_ADVERTISING_PROXY_ENABLE
@@ -2018,37 +2059,6 @@ exit:
     return error;
 }
 
-TimeMilli Server::Service::GetExpireTime(void) const
-{
-    OT_ASSERT(!mIsDeleted);
-    OT_ASSERT(!GetHost().IsDeleted());
-
-    return mUpdateTime + Time::SecToMsec(mLease);
-}
-
-TimeMilli Server::Service::GetKeyExpireTime(void) const { return mUpdateTime + Time::SecToMsec(mKeyLease); }
-
-void Server::Service::GetLeaseInfo(LeaseInfo &aLeaseInfo) const
-{
-    TimeMilli now           = TimerMilli::GetNow();
-    TimeMilli keyExpireTime = GetKeyExpireTime();
-
-    aLeaseInfo.mLease             = Time::SecToMsec(GetLease());
-    aLeaseInfo.mKeyLease          = Time::SecToMsec(GetKeyLease());
-    aLeaseInfo.mRemainingKeyLease = (now <= keyExpireTime) ? (keyExpireTime - now) : 0;
-
-    if (!mIsDeleted)
-    {
-        TimeMilli expireTime = GetExpireTime();
-
-        aLeaseInfo.mRemainingLease = (now <= expireTime) ? (expireTime - now) : 0;
-    }
-    else
-    {
-        aLeaseInfo.mRemainingLease = 0;
-    }
-}
-
 bool Server::Service::MatchesInstanceName(const char *aInstanceName) const { return Matches(aInstanceName); }
 
 bool Server::Service::MatchesServiceName(const char *aServiceName) const
@@ -2080,27 +2090,16 @@ bool Server::Service::HasSubTypeServiceName(const char *aSubTypeServiceName) con
 #if OT_SHOULD_LOG_AT(OT_LOG_LEVEL_INFO)
 void Server::Service::Log(Action aAction) const
 {
-    static const char *const kActionStrings[] = {
-        "Add new",                   // (0) kAddNew
-        "Update existing",           // (1) kUpdateExisting
-        "Keep unchanged",            // (2) kKeepUnchanged
-        "Remove but retain name of", // (3) kRemoveButRetainName
-        "Fully remove",              // (4) kFullyRemove
-        "LEASE expired for",         // (5) kLeaseExpired
-        "KEY LEASE expired for",     // (6) kKeyLeaseExpired
-    };
+#define ActionMapList(_)                                 \
+    _(kAddNew, "Add new")                                \
+    _(kUpdateExisting, "Update existing")                \
+    _(kKeepUnchanged, "Keep unchanged")                  \
+    _(kRemoveButRetainName, "Remove but retain name of") \
+    _(kFullyRemove, "Fully remove")                      \
+    _(kLeaseExpired, "LEASE expired for")                \
+    _(kKeyLeaseExpired, "KEY LEASE expired for")
 
-    struct EnumCheck
-    {
-        InitEnumValidatorCounter();
-        ValidateNextEnum(kAddNew);
-        ValidateNextEnum(kUpdateExisting);
-        ValidateNextEnum(kKeepUnchanged);
-        ValidateNextEnum(kRemoveButRetainName);
-        ValidateNextEnum(kFullyRemove);
-        ValidateNextEnum(kLeaseExpired);
-        ValidateNextEnum(kKeyLeaseExpired);
-    };
+    DefineEnumStringArray(ActionMapList);
 
     // We only log if the `Service` is marked as committed. This
     // ensures that temporary `Service` entries associated with a
@@ -2109,7 +2108,7 @@ void Server::Service::Log(Action aAction) const
 
     if (mIsCommitted)
     {
-        LogInfo("%s service '%s'", kActionStrings[aAction], GetInstanceName());
+        LogInfo("%s service '%s'", kStrings[aAction], GetInstanceName());
 
         for (const Heap::String &subType : mSubTypes)
         {
@@ -2147,10 +2146,6 @@ exit:
 Server::Host::Host(Instance &aInstance, TimeMilli aUpdateTime)
     : InstanceLocator(aInstance)
     , mNext(nullptr)
-    , mTtl(0)
-    , mLease(0)
-    , mKeyLease(0)
-    , mUpdateTime(aUpdateTime)
     , mParsedKey(false)
     , mUseShortLeaseOption(false)
 #if OPENTHREAD_CONFIG_SRP_SERVER_ADVERTISING_PROXY_ENABLE
@@ -2163,6 +2158,7 @@ Server::Host::Host(Instance &aInstance, TimeMilli aUpdateTime)
     , mKeyAdvId(kInvalidRequestId)
 #endif
 {
+    LeaseTracker::Init(aUpdateTime);
 }
 
 Server::Host::~Host(void) { FreeAllServices(); }
@@ -2190,56 +2186,6 @@ Error Server::Host::SetFullName(const char *aFullName)
 bool Server::Host::Matches(const char *aFullName) const
 {
     return StringMatch(mFullName.AsCString(), aFullName, kStringCaseInsensitiveMatch);
-}
-
-TimeMilli Server::Host::GetExpireTime(void) const
-{
-    OT_ASSERT(!IsDeleted());
-
-    return mUpdateTime + Time::SecToMsec(mLease);
-}
-
-TimeMilli Server::Host::GetKeyExpireTime(void) const { return mUpdateTime + Time::SecToMsec(mKeyLease); }
-
-void Server::Host::GetLeaseInfo(LeaseInfo &aLeaseInfo) const
-{
-    TimeMilli now           = TimerMilli::GetNow();
-    TimeMilli keyExpireTime = GetKeyExpireTime();
-
-    aLeaseInfo.mLease             = Time::SecToMsec(GetLease());
-    aLeaseInfo.mKeyLease          = Time::SecToMsec(GetKeyLease());
-    aLeaseInfo.mRemainingKeyLease = (now <= keyExpireTime) ? (keyExpireTime - now) : 0;
-
-    if (!IsDeleted())
-    {
-        TimeMilli expireTime = GetExpireTime();
-
-        aLeaseInfo.mRemainingLease = (now <= expireTime) ? (expireTime - now) : 0;
-    }
-    else
-    {
-        aLeaseInfo.mRemainingLease = 0;
-    }
-}
-
-Error Server::Host::ProcessTtl(uint32_t aTtl)
-{
-    // This method processes the TTL value received in a resource record.
-    //
-    // If no TTL value is stored, this method will set the stored value to @p aTtl and return `kErrorNone`.
-    // If a TTL value is stored and @p aTtl equals the stored value, this method returns `kErrorNone`.
-    // Otherwise, this method returns `kErrorRejected`.
-
-    Error error = kErrorRejected;
-
-    VerifyOrExit(aTtl && (mTtl == 0 || mTtl == aTtl));
-
-    mTtl = aTtl;
-
-    error = kErrorNone;
-
-exit:
-    return error;
 }
 
 const Server::Service *Server::Host::GetNextService(const Service *aPrevService) const
@@ -2273,11 +2219,11 @@ void Server::Host::RemoveService(Service *aService, RetainName aRetainName, Noti
     VerifyOrExit(aService != nullptr);
 
     aService->mIsDeleted = true;
-    aService->mLease     = 0;
+    aService->SetLease(0);
 
     if (!aRetainName)
     {
-        aService->mKeyLease = 0;
+        aService->SetKeyLease(0);
     }
 
     aService->Log(aRetainName ? Service::kRemoveButRetainName : Service::kFullyRemove);

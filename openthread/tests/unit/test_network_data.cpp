@@ -179,12 +179,12 @@ void TestNetworkDataIterator(void)
 
         for (const auto &route : routes)
         {
-            SuccessOrQuit(netData.GetNextExternalRoute(iter, rconfig));
+            SuccessOrQuit(netData.GetNext(iter, rconfig));
             PrintExternalRouteConfig(rconfig);
             VerifyOrQuit(CompareExternalRouteConfig(rconfig, route));
         }
 
-        VerifyOrQuit(netData.GetNextExternalRoute(iter, rconfig) == kErrorNotFound);
+        VerifyOrQuit(netData.GetNext(iter, rconfig) == kErrorNotFound);
 
         netData.FindRlocs(kAnyBrOrServer, kAnyRole, rlocs);
         VerifyRlocsArray(rlocs, kRlocs);
@@ -303,7 +303,7 @@ void TestNetworkDataIterator(void)
 
         for (const auto &route : routes)
         {
-            SuccessOrQuit(netData.GetNextExternalRoute(iter, rconfig));
+            SuccessOrQuit(netData.GetNext(iter, rconfig));
             PrintExternalRouteConfig(rconfig);
             VerifyOrQuit(CompareExternalRouteConfig(rconfig, route));
         }
@@ -471,7 +471,7 @@ void TestNetworkDataIterator(void)
 
         for (const auto &route : routes)
         {
-            SuccessOrQuit(netData.GetNextExternalRoute(iter, rconfig));
+            SuccessOrQuit(netData.GetNext(iter, rconfig));
             PrintExternalRouteConfig(rconfig);
             VerifyOrQuit(CompareExternalRouteConfig(rconfig, route));
         }
@@ -480,7 +480,7 @@ void TestNetworkDataIterator(void)
 
         for (const auto &prefix : prefixes)
         {
-            SuccessOrQuit(netData.GetNextOnMeshPrefix(iter, pconfig));
+            SuccessOrQuit(netData.GetNext(iter, pconfig));
             PrintOnMeshPrefixConfig(pconfig);
             VerifyOrQuit(CompareOnMeshPrefixConfig(pconfig, prefix));
         }
@@ -735,7 +735,7 @@ void TestNetworkDataDsnSrpServices(void)
         const uint8_t kPreferredAnycastEntryIndex = 2;
 
         Service::Manager          &manager = instance->Get<Service::Manager>();
-        Service::Manager::Iterator iterator;
+        Service::Iterator          iterator(*instance);
         Service::DnsSrpAnycastInfo anycastInfo;
         Service::DnsSrpUnicastInfo unicastInfo;
         Service::DnsSrpUnicastType type;
@@ -766,16 +766,16 @@ void TestNetworkDataDsnSrpServices(void)
 
         for (const AnycastEntry &entry : kAnycastEntries)
         {
-            SuccessOrQuit(manager.GetNextDnsSrpAnycastInfo(iterator, anycastInfo));
+            SuccessOrQuit(iterator.GetNextDnsSrpAnycastInfo(anycastInfo));
 
-            printf("\nanycastInfo { %s, seq:%d, rlco16:%04x, version:%u }",
+            printf("\nanycastInfo { %s, seq:%d, rloc16:%04x, version:%u }",
                    anycastInfo.mAnycastAddress.ToString().AsCString(), anycastInfo.mSequenceNumber, anycastInfo.mRloc16,
                    anycastInfo.mVersion);
 
             VerifyOrQuit(entry.Matches(anycastInfo), "GetNextDnsSrpAnycastInfo() returned incorrect info");
         }
 
-        VerifyOrQuit(manager.GetNextDnsSrpAnycastInfo(iterator, anycastInfo) == kErrorNotFound,
+        VerifyOrQuit(iterator.GetNextDnsSrpAnycastInfo(anycastInfo) == kErrorNotFound,
                      "GetNextDnsSrpAnycastInfo() returned unexpected extra entry");
 
         // Find the preferred "DNS/SRP Anycast Service" entries in Network Data
@@ -791,37 +791,37 @@ void TestNetworkDataDsnSrpServices(void)
         printf("\n\n- - - - - - - - - - - - - - - - - - - -");
         printf("\nDNS/SRP Unicast Service entries (server data)\n");
 
-        iterator.Clear();
+        iterator.Reset();
         type = Service::kAddrInServerData;
 
         for (const UnicastEntry &entry : kUnicastEntriesFromServerData)
         {
-            SuccessOrQuit(manager.GetNextDnsSrpUnicastInfo(iterator, type, unicastInfo));
+            SuccessOrQuit(iterator.GetNextDnsSrpUnicastInfo(type, unicastInfo));
             printf("\nunicastInfo { %s, rloc16:%04x }", unicastInfo.mSockAddr.ToString().AsCString(),
                    unicastInfo.mRloc16);
 
             VerifyOrQuit(entry.Matches(unicastInfo), "GetNextDnsSrpUnicastInfo() returned incorrect info");
         }
 
-        VerifyOrQuit(manager.GetNextDnsSrpUnicastInfo(iterator, type, unicastInfo) == kErrorNotFound,
+        VerifyOrQuit(iterator.GetNextDnsSrpUnicastInfo(type, unicastInfo) == kErrorNotFound,
                      "GetNextDnsSrpUnicastInfo() returned unexpected extra entry");
 
         printf("\n\n- - - - - - - - - - - - - - - - - - - -");
         printf("\nDNS/SRP Unicast Service entries (service data)\n");
 
-        iterator.Clear();
+        iterator.Reset();
         type = Service::kAddrInServiceData;
 
         for (const UnicastEntry &entry : kUnicastEntriesFromServiceData)
         {
-            SuccessOrQuit(manager.GetNextDnsSrpUnicastInfo(iterator, type, unicastInfo));
+            SuccessOrQuit(iterator.GetNextDnsSrpUnicastInfo(type, unicastInfo));
             printf("\nunicastInfo { %s, rloc16:%04x }", unicastInfo.mSockAddr.ToString().AsCString(),
                    unicastInfo.mRloc16);
 
             VerifyOrQuit(entry.Matches(unicastInfo), "GetNextDnsSrpUnicastInfo() returned incorrect info");
         }
 
-        VerifyOrQuit(manager.GetNextDnsSrpUnicastInfo(iterator, type, unicastInfo) == kErrorNotFound,
+        VerifyOrQuit(iterator.GetNextDnsSrpUnicastInfo(type, unicastInfo) == kErrorNotFound,
                      "GetNextDnsSrpUnicastInfo() returned unexpected extra entry");
 
         printf("\n");
@@ -1019,11 +1019,9 @@ void TestNetworkDataDsnSrpAnycastSeqNumSelection(void)
     const uint8_t kPreferredSeqNum15 = 3;
     const uint8_t kPreferredVer15    = 0;
 
-#define TEST_CASE(Num)                                                                            \
-    {                                                                                             \
-        kNetworkData##Num, sizeof(kNetworkData##Num), kSeqNumbers##Num, sizeof(kSeqNumbers##Num), \
-            kPreferredSeqNum##Num, kPreferredVer##Num                                             \
-    }
+#define TEST_CASE(Num)                                                      \
+    {kNetworkData##Num,        sizeof(kNetworkData##Num), kSeqNumbers##Num, \
+     sizeof(kSeqNumbers##Num), kPreferredSeqNum##Num,     kPreferredVer##Num}
 
     const TestInfo kTests[] = {
         TEST_CASE(1),  TEST_CASE(2),  TEST_CASE(3),  TEST_CASE(4),  TEST_CASE(5),
@@ -1036,7 +1034,7 @@ void TestNetworkDataDsnSrpAnycastSeqNumSelection(void)
 
     for (const TestInfo &test : kTests)
     {
-        Service::Manager::Iterator iterator;
+        Service::Iterator          iterator(*instance);
         Service::DnsSrpAnycastInfo anycastInfo;
 
         reinterpret_cast<TestLeader &>(instance->Get<Leader>()).Populate(test.mNetworkData, test.mNetworkDataLength);
@@ -1046,9 +1044,9 @@ void TestNetworkDataDsnSrpAnycastSeqNumSelection(void)
 
         for (uint8_t index = 0; index < test.mSeqNumbersLength; index++)
         {
-            SuccessOrQuit(manager.GetNextDnsSrpAnycastInfo(iterator, anycastInfo));
+            SuccessOrQuit(iterator.GetNextDnsSrpAnycastInfo(anycastInfo));
 
-            printf("\n { %s, seq:%u, version:%u, rlco16:%04x }", anycastInfo.mAnycastAddress.ToString().AsCString(),
+            printf("\n { %s, seq:%u, version:%u, rloc16:%04x }", anycastInfo.mAnycastAddress.ToString().AsCString(),
 
                    anycastInfo.mSequenceNumber, anycastInfo.mVersion, anycastInfo.mRloc16);
 
@@ -1056,13 +1054,65 @@ void TestNetworkDataDsnSrpAnycastSeqNumSelection(void)
             VerifyOrQuit(anycastInfo.mRloc16 == 0x5000 + index);
         }
 
-        VerifyOrQuit(manager.GetNextDnsSrpAnycastInfo(iterator, anycastInfo) == kErrorNotFound);
+        VerifyOrQuit(iterator.GetNextDnsSrpAnycastInfo(anycastInfo) == kErrorNotFound);
         SuccessOrQuit(manager.FindPreferredDnsSrpAnycastInfo(anycastInfo));
 
         printf("\n preferred -> seq:%u, version:%u ", anycastInfo.mSequenceNumber, anycastInfo.mVersion);
         VerifyOrQuit(anycastInfo.mSequenceNumber == test.mPreferredSeqNum);
         VerifyOrQuit(anycastInfo.mVersion == test.mPreferredVersion);
     }
+
+    testFreeInstance(instance);
+}
+
+void TestNetworkDataContextLength(void)
+{
+    Instance *instance;
+    Iterator  iter;
+
+    printf("\n\n-------------------------------------------------");
+    printf("\nTestNetworkDataContextLength()\n");
+
+    instance = testInitInstance();
+    VerifyOrQuit(instance != nullptr);
+
+    // Prefix TLV (stable) for 2001:db8:0:1::/64 carrying a 6LoWPAN Context sub-TLV
+    // (context id 1, compress flag set). The trailing Context Length byte is varied
+    // by the test cases below. The Context Length is required to equal the prefix
+    // length of the outer Prefix TLV and is otherwise not used: the rendered
+    // `LowpanContextInfo` prefix length must come from the outer Prefix TLV for any
+    // Context Length value, including malformed values above
+    // `Ip6::Prefix::kMaxLength` (128).
+
+    uint8_t networkData[] = {
+        0x03, 0x0E, 0x00, 0x40, 0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x01, 0x07, 0x02, 0x11, 0x00,
+    };
+
+    const uint16_t kContextLengthOffset  = sizeof(networkData) - 1;
+    const uint8_t  kOuterPrefixLength    = 64;
+    const uint8_t  kContextLengthCases[] = {32, 64, Ip6::Prefix::kMaxLength, 129, 255};
+
+    for (uint8_t contextLength : kContextLengthCases)
+    {
+        LowpanContextInfo info;
+
+        networkData[kContextLengthOffset] = contextLength;
+
+        NetworkData netData(*instance, networkData, sizeof(networkData));
+
+        printf("\nContext Length %-3u -> expect prefix length %u (from outer Prefix TLV)", contextLength,
+               kOuterPrefixLength);
+
+        SuccessOrQuit(netData.ValidateTlvs());
+
+        iter = kIteratorInit;
+        SuccessOrQuit(netData.GetNext(iter, info));
+        VerifyOrQuit(info.mContextId == 1);
+        VerifyOrQuit(AsConst(info).GetPrefix().GetLength() == kOuterPrefixLength);
+        VerifyOrQuit(netData.GetNext(iter, info) == kErrorNotFound);
+    }
+
+    printf("\n");
 
     testFreeInstance(instance);
 }
@@ -1078,6 +1128,7 @@ int main(void)
 #endif
     ot::NetworkData::TestNetworkDataDsnSrpServices();
     ot::NetworkData::TestNetworkDataDsnSrpAnycastSeqNumSelection();
+    ot::NetworkData::TestNetworkDataContextLength();
 
     printf("\nAll tests passed\n");
     return 0;

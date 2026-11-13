@@ -36,6 +36,7 @@
 #include <sys/select.h>
 
 #include "logger.hpp"
+#include "mainloop.hpp"
 
 #if OPENTHREAD_CONFIG_DNS_UPSTREAM_QUERY_ENABLE
 
@@ -47,10 +48,10 @@ class Resolver : public Logger<Resolver>
 public:
     static const char kLogModuleName[]; ///< Module name used for logging.
 
-    constexpr static ssize_t kMaxDnsMessageSize           = 512;
-    constexpr static ssize_t kMaxUpstreamTransactionCount = 16;
-    constexpr static ssize_t kMaxUpstreamServerCount      = 3;
-    constexpr static ssize_t kMaxRecursiveServerCount     = 3;
+    static constexpr ssize_t kMaxDnsMessageSize           = 512;
+    static constexpr ssize_t kMaxUpstreamTransactionCount = 16;
+    static constexpr ssize_t kMaxUpstreamServerCount      = 3;
+    static constexpr ssize_t kMaxRecursiveServerCount     = 3;
 
     /**
      * Initialize the upstream DNS resolver.
@@ -92,14 +93,14 @@ public:
      *
      * @param[in,out]  aContext  The mainloop context.
      */
-    void UpdateFdSet(otSysMainloopContext &aContext);
+    void UpdateFdSet(Mainloop::Context &aContext);
 
     /**
      * Handles the result of select.
      *
      * @param[in]  aContext  The mainloop context.
      */
-    void Process(const otSysMainloopContext &aContext);
+    void Process(const Mainloop::Context &aContext);
 
     /**
      * Sets whether to retrieve upstream DNS servers from "resolv.conf".
@@ -122,7 +123,6 @@ public:
      *
      * @param[in] aRecursiveDnsServers A pointer to the list of IPv6 recursive DNS server addresses.
      * @param[in] aNumServers          The number of recursive DNS servers.
-     *
      */
     void SetRecursiveDnsServerList(const otIp6Address *aRecursiveDnsServers, uint32_t aNumServers);
 
@@ -135,9 +135,12 @@ private:
         otPlatDnsUpstreamQuery *mThreadTxn;
         int                     mUdpFd4;
         int                     mUdpFd6;
+        // Socket bound to the infra netif, used for recursive DNS servers discovered
+        // on that link. -1 when unavailable (queries then use the unbound `mUdpFd6`).
+        int mInfraUdpFd6;
     };
 
-    static int CreateUdpSocket(sa_family_t aFamily);
+    static int CreateUdpSocket(sa_family_t aFamily, bool aBindToInfraNetif);
 
     Transaction *GetTransaction(otPlatDnsUpstreamQuery *aThreadTxn);
     Transaction *AllocateTransaction(otPlatDnsUpstreamQuery *aThreadTxn);
@@ -145,7 +148,8 @@ private:
     otError SendQueryToServer(Transaction        *aTxn,
                               const otIp6Address &aServerAddress,
                               const char         *aPacket,
-                              uint16_t            aLength);
+                              uint16_t            aLength,
+                              bool                aViaInfraNetif);
     void    ForwardResponse(otPlatDnsUpstreamQuery *aThreadTxn, int aFd);
     void    CloseTransaction(Transaction *aTxn);
     void    TryRefreshDnsServerList(void);

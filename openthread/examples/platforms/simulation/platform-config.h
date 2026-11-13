@@ -41,6 +41,15 @@
 #endif
 
 /**
+ * @def OPENTHREAD_SIMULATION_UART_ENABLE
+ *
+ * Define as 1 to enable UART transport.
+ */
+#ifndef OPENTHREAD_SIMULATION_UART_ENABLE
+#define OPENTHREAD_SIMULATION_UART_ENABLE 1
+#endif
+
+/**
  * @def OPENTHREAD_SIMULATION_VIRTUAL_TIME
  *
  * This setting configures whether to use virtual time (used for simulation) in simulation platform.
@@ -75,17 +84,6 @@
 #ifndef OPENTHREAD_CONFIG_NCP_SPI_ENABLE
 #define OPENTHREAD_CONFIG_NCP_SPI_ENABLE 0
 #endif
-
-/**
- * Check OTNS configurations
- */
-#if OPENTHREAD_CONFIG_OTNS_ENABLE
-
-#if !OPENTHREAD_SIMULATION_VIRTUAL_TIME
-#error "OTNS requires virtual time simulations"
-#endif
-
-#endif // OPENTHREAD_CONFIG_OTNS_ENABLE
 
 /**
  * @def OPENTHREAD_SIMULATION_MAX_NETWORK_SIZE

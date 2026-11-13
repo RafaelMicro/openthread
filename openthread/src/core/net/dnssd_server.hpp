@@ -26,8 +26,8 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef DNS_SERVER_HPP_
-#define DNS_SERVER_HPP_
+#ifndef OT_CORE_NET_DNSSD_SERVER_HPP_
+#define OT_CORE_NET_DNSSD_SERVER_HPP_
 
 #include "openthread-core-config.h"
 
@@ -53,6 +53,7 @@
 #include "common/equatable.hpp"
 #include "common/message.hpp"
 #include "common/non_copyable.hpp"
+#include "common/num_utils.hpp"
 #include "common/owned_ptr.hpp"
 #include "common/timer.hpp"
 #include "net/dns_types.hpp"
@@ -310,6 +311,7 @@ private:
     static constexpr bool     kBindUnspecifiedNetif         = OPENTHREAD_CONFIG_DNSSD_SERVER_BIND_UNSPECIFIED_NETIF;
     static constexpr uint32_t kQueryTimeout                 = OPENTHREAD_CONFIG_DNSSD_QUERY_TIMEOUT;
     static constexpr uint16_t kMaxConcurrentUpstreamQueries = 32;
+    static constexpr uint16_t kMaxQuestionCount             = 2;
 
     static constexpr uint16_t kRrTypeA     = ResourceRecord::kTypeA;
     static constexpr uint16_t kRrTypeNs    = ResourceRecord::kTypeNs;
@@ -514,6 +516,8 @@ private:
         void Resolve(ProxyQuery &aQuery, ProxyQueryInfo &aInfo);
         void CancelAction(ProxyQuery &aQuery, ProxyQueryInfo &aInfo);
 
+        static uint32_t CapTtl(uint32_t aTtl) { return Min(aTtl, kMaxTtl); }
+
     private:
         enum Command : uint8_t
         {
@@ -569,6 +573,8 @@ private:
                           const ProxyResult  &aResult);
 
         static bool IsActionForAdditionalSection(ProxyAction aAction, const Questions &aQuestions);
+
+        static constexpr uint32_t kMaxTtl = 10; // RFC 8766 Section 5.5.1 and Section 5.6
 
         bool mIsRunning;
     };
@@ -674,4 +680,4 @@ DefineCoreType(otPlatDnsUpstreamQuery, Dns::ServiceDiscovery::Server::UpstreamQu
 
 #endif // OPENTHREAD_CONFIG_DNSSD_SERVER_ENABLE
 
-#endif // DNS_SERVER_HPP_
+#endif // OT_CORE_NET_DNSSD_SERVER_HPP_

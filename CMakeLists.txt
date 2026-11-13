@@ -17,7 +17,7 @@ sdk_add_include_directories(
 )
 
 set(OT_PACKAGE_NAME "OPENTHREAD" CACHE STRING "OpenThread Package Name")
-set(OT_PACKAGE_VERSION "baf13fc99" CACHE STRING "OpenThread Package Version")
+set(OT_PACKAGE_VERSION "v2026.10.0" CACHE STRING "OpenThread Package Version")
 
 # mebtls configuration
 add_compile_options(
@@ -190,6 +190,9 @@ endif()
 add_compile_options(
     -D__int64_t_defined=1
     -Wimplicit-fallthrough=0 -Wno-switch-default
+    # OpenThread adds -Wformat-nonliteral, which GCC ignores (with a warning)
+    # unless -Wformat is on; the SDK builds with -Wno-format
+    -Wformat
     -DOT_FREERTOS_ENABLE=1
 
     -DOPENTHREAD_CONFIG_PLATFORM_INFO="${CONFIG_CHIP}"

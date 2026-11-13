@@ -155,7 +155,10 @@ otError SpiInterface::Init(ReceiveFrameCallback aCallback, void *aCallbackContex
     }
     else
     {
-        LogNote("gpio-reset-device is not given.");
+        // For some products, gpio-reset-device is not needed in the radio URL as
+        // the reset may be managed by another component in the system (e.g., by the BT stack).
+        // In this case, gpio-reset-device in the radio URL should not be given, and this is expected.
+        LogInfo("gpio-reset-device is not given.");
     }
 
     InitSpiDev(mRadioUrl.GetPath(), spiMode, spiSpeed);
@@ -325,8 +328,7 @@ uint8_t *SpiInterface::GetRealRxFrameStart(uint8_t *aSpiRxFrameBuffer, uint8_t a
     uint8_t       *start = aSpiRxFrameBuffer;
     const uint8_t *end   = aSpiRxFrameBuffer + aAlignAllowance;
 
-    for (; start != end && ((start[0] == 0xff) || (start[0] == 0x00)); start++)
-        ;
+    for (; start != end && ((start[0] == 0xff) || (start[0] == 0x00)); start++);
 
     aSkipLength = static_cast<uint16_t>(start - aSpiRxFrameBuffer);
 
@@ -410,8 +412,9 @@ otError SpiInterface::PushPullSpi(void)
     txFrame.SetHeaderAcceptLen(0);
     txFrame.SetHeaderDataLen(0);
 
-    // Sanity check.
-    if (mSpiSlaveDataLen > kMaxFrameSize)
+    // Sanity check. The header `data_len` carries the payload length only
+    // (it excludes header size), so the largest valid value is the MTU.
+    if (mSpiSlaveDataLen > kMaxFrameSize - kSpiFrameHeaderSize)
     {
         mSpiSlaveDataLen = 0;
     }
@@ -515,7 +518,8 @@ otError SpiInterface::PushPullSpi(void)
         slaveAcceptLen   = rxFrame.GetHeaderAcceptLen();
         mSpiSlaveDataLen = rxFrame.GetHeaderDataLen();
 
-        if (!rxFrame.IsValid() || (slaveAcceptLen > kMaxFrameSize) || (mSpiSlaveDataLen > kMaxFrameSize))
+        if (!rxFrame.IsValid() || (slaveAcceptLen > kMaxFrameSize - kSpiFrameHeaderSize) ||
+            (mSpiSlaveDataLen > kMaxFrameSize - kSpiFrameHeaderSize))
         {
             mInterfaceMetrics.mTransferredGarbageFrameCount++;
             mSpiTxRefusedCount++;

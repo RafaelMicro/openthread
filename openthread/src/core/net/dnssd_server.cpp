@@ -352,7 +352,7 @@ Server::ResponseCode Server::Request::ParseQuestions(uint8_t aTestMode, bool &aS
         VerifyOrExit(!(aTestMode & kTestModeRejectMultiQuestionQuery));
         VerifyOrExit(!(aTestMode & kTestModeIgnoreMultiQuestionQuery), aShouldRespond = false);
 
-        VerifyOrExit(questionCount == 2);
+        VerifyOrExit(questionCount == kMaxQuestionCount);
 
         // Allow SRV and TXT questions for the same service
         // instance name in the same query.
@@ -1107,15 +1107,19 @@ exit:
 bool Server::ShouldForwardToUpstream(const Request &aRequest) const
 {
     bool         shouldForward = false;
+    uint16_t     questionCount = aRequest.mHeader.GetQuestionCount();
     uint16_t     readOffset;
     Name::Buffer name;
 
     VerifyOrExit(mEnableUpstreamQuery);
 
     VerifyOrExit(aRequest.mHeader.IsRecursionDesiredFlagSet());
+
+    VerifyOrExit((questionCount > 0) && (questionCount <= kMaxQuestionCount));
+
     readOffset = sizeof(Header);
 
-    for (uint16_t i = 0; i < aRequest.mHeader.GetQuestionCount(); i++)
+    for (uint16_t i = 0; i < questionCount; i++)
     {
         SuccessOrExit(Name::ReadName(*aRequest.mMessage, readOffset, name));
         readOffset += sizeof(Question);
@@ -1653,7 +1657,7 @@ void Server::ResetUpstreamQueryTransaction(UpstreamQueryTransaction &aTxn, Error
     else
     {
         mCounters.mUpstreamDnsCounters.mFailures++;
-        LogWarn("Upstream query transaction %d closed: %s.", index, ErrorToString(aError));
+        LogWarnOnError(aError, "handle upstream query transaction %d", index);
     }
     aTxn.Reset();
 }
@@ -2479,7 +2483,7 @@ Error Server::Response::AppendPtrRecord(const ProxyResult &aResult)
 
     mSection = kAnswerSection;
 
-    return AppendPtrRecord(browseResult->mServiceInstance, browseResult->mTtl);
+    return AppendPtrRecord(browseResult->mServiceInstance, DiscoveryProxy::CapTtl(browseResult->mTtl));
 }
 
 Error Server::Response::AppendSrvRecord(const ProxyResult &aResult)
@@ -2491,7 +2495,8 @@ Error Server::Response::AppendSrvRecord(const ProxyResult &aResult)
 
     ConstructFullName(srvResult->mHostName, fullHostName);
 
-    return AppendSrvRecord(fullHostName, srvResult->mTtl, srvResult->mPriority, srvResult->mWeight, srvResult->mPort);
+    return AppendSrvRecord(fullHostName, DiscoveryProxy::CapTtl(srvResult->mTtl), srvResult->mPriority,
+                           srvResult->mWeight, srvResult->mPort);
 }
 
 Error Server::Response::AppendTxtRecord(const ProxyResult &aResult)
@@ -2500,7 +2505,7 @@ Error Server::Response::AppendTxtRecord(const ProxyResult &aResult)
 
     mSection = mQuestions.SectionFor(kRrTypeTxt);
 
-    return AppendTxtRecord(txtResult->mTxtData, txtResult->mTxtDataLength, txtResult->mTtl);
+    return AppendTxtRecord(txtResult->mTxtData, txtResult->mTxtDataLength, DiscoveryProxy::CapTtl(txtResult->mTtl));
 }
 
 Error Server::Response::AppendHostIp6Addresses(const ProxyResult &aResult)
@@ -2525,7 +2530,7 @@ Error Server::Response::AppendHostIp6Addresses(const ProxyResult &aResult)
             continue;
         }
 
-        SuccessOrExit(error = AppendAaaaRecord(address, entry.mTtl));
+        SuccessOrExit(error = AppendAaaaRecord(address, DiscoveryProxy::CapTtl(entry.mTtl)));
     }
 
 exit:
@@ -2549,7 +2554,7 @@ Error Server::Response::AppendHostIp4Addresses(const ProxyResult &aResult)
             continue;
         }
 
-        SuccessOrExit(error = AppendARecord(address, entry.mTtl));
+        SuccessOrExit(error = AppendARecord(address, DiscoveryProxy::CapTtl(entry.mTtl)));
     }
 
 exit:
@@ -2565,7 +2570,7 @@ Error Server::Response::AppendGenericRecord(const ProxyResult &aResult)
 
     data.Init(result->mRecordData, result->mRecordDataLength);
 
-    return AppendGenericRecord(result->mRecordType, data, result->mTtl);
+    return AppendGenericRecord(result->mRecordType, data, DiscoveryProxy::CapTtl(result->mTtl));
 }
 
 bool Server::IsProxyAddressValid(const Ip6::Address &aAddress)

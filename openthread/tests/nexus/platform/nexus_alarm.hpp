@@ -26,8 +26,8 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef OT_NEXUS_ALARM_HPP_
-#define OT_NEXUS_ALARM_HPP_
+#ifndef OT_NEXUS_PLATFORM_NEXUS_ALARM_HPP_
+#define OT_NEXUS_PLATFORM_NEXUS_ALARM_HPP_
 
 #include "instance/instance.hpp"
 
@@ -36,7 +36,8 @@ namespace Nexus {
 
 struct Alarm
 {
-    bool ShouldTrigger(Time aNow) const { return mScheduled && (aNow >= mAlarmTime); }
+    Alarm(void) { Reset(); }
+    void Reset(void) { mScheduled = false; }
 
     bool mScheduled;
     Time mAlarmTime;
@@ -45,4 +46,4 @@ struct Alarm
 } // namespace Nexus
 } // namespace ot
 
-#endif // OT_NEXUS_ALARM_HPP_
+#endif // OT_NEXUS_PLATFORM_NEXUS_ALARM_HPP_

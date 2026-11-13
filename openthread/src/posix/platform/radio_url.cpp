@@ -43,30 +43,30 @@ const char *otSysGetRadioUrlHelpString(void)
     "\n"
 
 #if OPENTHREAD_POSIX_CONFIG_SPINEL_SPI_INTERFACE_ENABLE
-#define OT_SPINEL_SPI_RADIO_URL_HELP_BUS                                                                           \
-    "Protocol=[spinel+spi*]           Specify the Spinel interface as the Spinel SPI interface\n"                  \
-    "    spinel+spi://${PATH_TO_SPI_DEVICE}?${Parameters}\n"                                                       \
-    "Parameters:\n"                                                                                                \
-    "    gpio-int-device[=gpio-device-path]\n"                                                                     \
-    "                                  Specify a path to the Linux sysfs-exported GPIO device for the\n"           \
-    "                                  `I̅N̅T̅` pin.\n"                                                         \
-    "    gpio-int-line[=line-offset]\n"                                                                            \
-    "                                  The offset index of `I̅N̅T̅` pin for the associated GPIO device.\n"      \
-    "    gpio-reset-device[=gpio-device-path]\n"                                                                   \
-    "                                  Specify a path to the Linux sysfs-exported GPIO device for the\n"           \
-    "                                  `R̅E̅S̅` pin. If not specified, the process will direct exist when an\n" \
-    "                                  RCP reset is required.\n"                                                   \
-    "    gpio-reset-line[=line-offset]\n"                                                                          \
-    "                                  The offset index of `R̅E̅S̅` pin for the associated GPIO device. This\n" \
-    "                                  is required if `gpio-reset-device` is specified.\n"                         \
-    "    spi-mode[=mode]               Specify the SPI mode to use (0-3).\n"                                       \
-    "    spi-speed[=hertz]             Specify the SPI speed in hertz.\n"                                          \
-    "    spi-cs-delay[=usec]           Specify the delay after C̅S̅ assertion, in µsec.\n"                      \
-    "    spi-reset-delay[=ms]          Specify the delay after R̅E̅S̅E̅T̅ assertion, in milliseconds.\n"      \
-    "    spi-align-allowance[=n]       Specify the maximum number of 0xFF bytes to clip from start of\n"           \
-    "                                  MISO frame. Max value is 16.\n"                                             \
-    "    spi-small-packet=[n]          Specify the smallest packet we can receive in a single transaction.\n"      \
-    "                                  (larger packets will require two transactions). Default value is 32.\n"     \
+#define OT_SPINEL_SPI_RADIO_URL_HELP_BUS                                                                       \
+    "Protocol=[spinel+spi*]           Specify the Spinel interface as the Spinel SPI interface\n"              \
+    "    spinel+spi://${PATH_TO_SPI_DEVICE}?${Parameters}\n"                                                   \
+    "Parameters:\n"                                                                                            \
+    "    gpio-int-device[=gpio-device-path]\n"                                                                 \
+    "                                  Specify a path to the Linux sysfs-exported GPIO device for the\n"       \
+    "                                  `I̅N̅T̅` pin.\n"                                                           \
+    "    gpio-int-line[=line-offset]\n"                                                                        \
+    "                                  The offset index of `I̅N̅T̅` pin for the associated GPIO device.\n"        \
+    "    gpio-reset-device[=gpio-device-path]\n"                                                               \
+    "                                  Specify a path to the Linux sysfs-exported GPIO device for the\n"       \
+    "                                  `R̅E̅S̅` pin. If not specified, the process will direct exist when an\n"   \
+    "                                  RCP reset is required.\n"                                               \
+    "    gpio-reset-line[=line-offset]\n"                                                                      \
+    "                                  The offset index of `R̅E̅S̅` pin for the associated GPIO device. This\n"   \
+    "                                  is required if `gpio-reset-device` is specified.\n"                     \
+    "    spi-mode[=mode]               Specify the SPI mode to use (0-3).\n"                                   \
+    "    spi-speed[=hertz]             Specify the SPI speed in hertz.\n"                                      \
+    "    spi-cs-delay[=usec]           Specify the delay after C̅S̅ assertion, in µsec.\n"                       \
+    "    spi-reset-delay[=ms]          Specify the delay after R̅E̅S̅E̅T̅ assertion, in milliseconds.\n"            \
+    "    spi-align-allowance[=n]       Specify the maximum number of 0xFF bytes to clip from start of\n"       \
+    "                                  MISO frame. Max value is 16.\n"                                         \
+    "    spi-small-packet=[n]          Specify the smallest packet we can receive in a single transaction.\n"  \
+    "                                  (larger packets will require two transactions). Default value is 32.\n" \
     "\n"
 #else
 #define OT_SPINEL_SPI_RADIO_URL_HELP_BUS
@@ -85,6 +85,7 @@ const char *otSysGetRadioUrlHelpString(void)
     "    uart-flow-control              Enable flow control, disabled by default.\n"                 \
     "    uart-init-deassert             Deassert lines on init when flow control is disabled.\n"     \
     "    uart-reset                     Reset connection after hard resetting RCP(USB CDC ACM).\n"   \
+    "    uart-exclusive                 Lock uart device using flock / TIOCEXCL.\n"                  \
     "\n"
 #else
 #define OT_SPINEL_HDLC_RADIO_URL_HELP_BUS
@@ -107,8 +108,15 @@ const char *otSysGetRadioUrlHelpString(void)
     "                                  If the number of values is less than that of supported channels,\n" \
     "                                  the last value will be applied to all remaining channels.\n"        \
     "                                  Special value 0x7f disables a channel.\n"
+
+// Only meaningful while max-power-table is compiled in; without it the note
+// would point at a parameter the help does not list.
+#define OT_RADIO_URL_HELP_TX_POWER_CAP                                                                \
+    "                                  max-power-table only caps the power; the radio transmits at\n" \
+    "                                  min(tx-power, max-power-table).\n"
 #else
 #define OT_RADIO_URL_HELP_MAX_POWER_TABLE
+#define OT_RADIO_URL_HELP_TX_POWER_CAP
 #endif
 
     return "RadioURL:\n" OT_RADIO_URL_HELP_BUS OT_SPINEL_SPI_RADIO_URL_HELP_BUS OT_SPINEL_HDLC_RADIO_URL_HELP_BUS
@@ -116,6 +124,7 @@ const char *otSysGetRadioUrlHelpString(void)
            "    region[=region-code]          Set the radio's region code. The region code must be an\n"
            "                                  ISO 3166 alpha-2 code.\n"
            "    cca-threshold[=dbm]           Set the radio's CCA ED threshold in dBm measured at antenna connector.\n"
+           "    tx-power[=dbm]                Set the radio's transmit power in dBm.\n" OT_RADIO_URL_HELP_TX_POWER_CAP
            "    enable-coex[=1|0]             If not specified, RCP coex operates with its default configuration.\n"
            "                                  Disable coex with 0, and enable it with other values.\n"
            "    fem-lnagain[=dbm]             Set the Rx LNA gain in dBm of the external FEM.\n"
@@ -148,8 +157,10 @@ void RadioUrl::Init(const char *aUrl)
 {
     if (aUrl != nullptr)
     {
-        VerifyOrDie(strnlen(aUrl, sizeof(mUrl)) < sizeof(mUrl), OT_EXIT_INVALID_ARGUMENTS);
-        strncpy(mUrl, aUrl, sizeof(mUrl) - 1);
+        size_t len = strlen(aUrl);
+
+        VerifyOrDie(len + 1 < sizeof(mUrl), OT_EXIT_INVALID_ARGUMENTS);
+        strcpy(mUrl, aUrl);
         SuccessOrDie(Url::Url::Init(mUrl));
     }
 }
