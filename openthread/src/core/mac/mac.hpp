@@ -77,12 +77,6 @@ namespace Mac {
 constexpr uint16_t kScanDurationDefault = OPENTHREAD_CONFIG_MAC_SCAN_DURATION; ///< Duration per channel (in msec).
 
 /**
- * Specifies the number of microseconds ahead of time that the MAC layer should deliver a CSL frame to the sub-MAC
- * layer.
- */
-constexpr uint16_t kCslRequestAhead = OPENTHREAD_CONFIG_MAC_CSL_REQUEST_AHEAD_US;
-
-/**
  * Defines the function pointer which is called during an Energy Scan when the scan result for a channel is
  * ready or when the scan completes.
  */
@@ -616,13 +610,6 @@ public:
      */
     Error GetRegion(uint16_t &aRegionCode) const;
 
-    /**
-     * Gets the wake-up channel.
-     *
-     * @returns wake-up channel.
-     */
-    uint8_t GetWakeupChannel(void) const { return mWakeupChannel; }
-
 private:
     static constexpr uint16_t kMaxCcaSampleCount = OPENTHREAD_CONFIG_CCA_FAILURE_RATE_AVERAGING_WINDOW;
 
@@ -636,9 +623,6 @@ private:
     static constexpr uint8_t kDefaultMaxFrameRetriesIndirect = OPENTHREAD_CONFIG_MAC_DEFAULT_MAX_FRAME_RETRIES_INDIRECT;
     static constexpr uint8_t kMaxFrameRetriesCsl             = 0;
     static constexpr uint8_t kTxNumBcast                     = OPENTHREAD_CONFIG_MAC_TX_NUM_BCAST;
-
-    static constexpr uint32_t kDefaultWedListenInterval = 1000000;
-    static constexpr uint32_t kDefaultWedListenDuration = 8000;
 
     enum Operation : uint8_t
     {
@@ -798,7 +782,6 @@ private:
     uint8_t  mCslChannel;
     uint16_t mCslPeriod;
 #endif
-    uint8_t mWakeupChannel;
     union
     {
         ScanResult::ScanCallback    mActiveScanCallback;

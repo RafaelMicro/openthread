@@ -1096,6 +1096,13 @@ public:
      */
     void RemoveScheduledParentResponses(void) { mDelayedSender.RemoveScheduledParentResponses(); }
 
+    /**
+     * Removes any scheduled Link Request to a given router.
+     *
+     * @param[in] aRouter  The router whose scheduled Link Request should be removed.
+     */
+    void RemoveScheduledLinkRequest(const Router &aRouter) { mDelayedSender.RemoveScheduledLinkRequest(aRouter); }
+
 #if OPENTHREAD_CONFIG_MLE_STEERING_DATA_SET_OOB_ENABLE
     /**
      * Sets steering data out of band
@@ -1701,6 +1708,7 @@ private:
         void RemoveScheduledLinkRequest(const Router &aRouter);
         bool HasAnyScheduledLinkRequest(const Router &aRouter) const;
         void ScheduleLinkAccept(const LinkAcceptInfo &aInfo, uint32_t aDelay);
+        bool HasAnyScheduledLinkAccept(const Router &aRouter) const;
         void ScheduleDiscoveryResponse(const Ip6::Address          &aDestination,
                                        const DiscoveryResponseInfo &aInfo,
                                        uint32_t                     aDelay);
@@ -1824,7 +1832,7 @@ private:
         // before sending the first message.
 
     public:
-        PrevRoleRestorer(Instance &aInstance);
+        explicit PrevRoleRestorer(Instance &aInstance);
 
         Error Start(void);
         void  Stop(void);
@@ -2328,6 +2336,10 @@ private:
     void HandleTimeSync(RxInfo &aRxInfo);
 #endif
 
+#if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
+    void UpdateCslState(void);
+#endif
+
 #if OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE
     void  HandleLinkMetricsManagementRequest(RxInfo &aRxInfo);
     void  HandleLinkProbe(RxInfo &aRxInfo);
@@ -2420,6 +2432,7 @@ private:
     void     SetChildStateToValid(Child &aChild);
     bool     HasChildren(void);
     void     RemoveChildren(void);
+    void     RemoveNeighborIfRloc16Mismatches(RxInfo &aRxInfo, uint16_t aRloc16);
     void     HandleAdvertiseTrickleTimer(void);
     void     HandleTimeTick(void);
     void     ScheduleChildUpdateToRestoreNonSleepyChildren(void);

@@ -153,7 +153,7 @@ void MeshForwarder::SendMessage(OwnedPtr<Message> aMessagePtr)
     }
 
 #if (OPENTHREAD_CONFIG_MAX_FRAMES_IN_DIRECT_TX_QUEUE > 0)
-    ApplyDirectTxQueueLimit(message);
+    SuccessOrExit(ApplyDirectTxQueueLimit(message));
 #endif
 
     if (message.IsDirectTransmission())
@@ -185,6 +185,140 @@ void MeshForwarder::HandleTxDelayTimer(void)
     LogDebg("Tx delay timer expired");
 }
 #endif
+
+Error MeshForwarder::EvictMessage(Message::Priority aPriority)
+{
+    Message *evict = nullptr;
+    Error    error;
+
+    error = RemoveUnsecureReassemblyMessage();
+    VerifyOrExit(error == kErrorNotFound);
+
+#if OPENTHREAD_CONFIG_DELAY_AWARE_QUEUE_MANAGEMENT_ENABLE
+    error = RemoveAgedMessages();
+    VerifyOrExit(error == kErrorNotFound);
+#endif
+
+#if OPENTHREAD_MTD
+    evict = FindMessageToEvict(aPriority);
+#elif OPENTHREAD_FTD
+    evict = FindMessageToEvict(kLowerPriorityThan, aPriority, Message::AcceptAny);
+
+    if (evict == nullptr)
+    {
+        evict = FindMessageToEvict(kEqualOrHigherPriorityThan, aPriority, Message::AcceptIndirectTx);
+    }
+#endif
+
+    VerifyOrExit(evict != nullptr);
+
+#if OPENTHREAD_MTD
+    FinalizeDirectTxAndRemoveMessageIfNoPendingTx(*evict, kErrorNoBufs, kMessageEvict);
+#elif OPENTHREAD_FTD
+    FinalizeAndRemoveMessage(*evict, kErrorNoBufs, kMessageEvict);
+#endif
+
+    error = kErrorNone;
+
+exit:
+    return error;
+}
+
+#if OPENTHREAD_MTD
+Message *MeshForwarder::FindMessageToEvict(Message::Priority aPriority)
+#elif OPENTHREAD_FTD
+Message *MeshForwarder::FindMessageToEvict(PriorityGuard aGuard, Message::Priority aPriority, Message::Checker aChecker)
+#endif
+{
+    enum MsgSelectionPolicy : uint8_t
+    {
+        kDisregardPartiallySentMsgs,
+        kAllowAllMsgs,
+    };
+
+    static constexpr MsgSelectionPolicy kMsgSelectionPolicies[] = {kDisregardPartiallySentMsgs, kAllowAllMsgs};
+
+    Message *evict            = nullptr;
+    uint8_t  startPriority    = Message::kPriorityLow;
+    uint8_t  afterEndPriority = aPriority;
+
+#if OPENTHREAD_FTD
+    switch (aGuard)
+    {
+    case kLowerPriorityThan:
+        break;
+    case kEqualOrHigherPriorityThan:
+        startPriority    = aPriority;
+        afterEndPriority = Message::kNumPriorities;
+        break;
+    }
+#endif
+
+    for (uint8_t priority = startPriority; priority < afterEndPriority; priority++)
+    {
+        for (MsgSelectionPolicy selectionPolicy : kMsgSelectionPolicies)
+        {
+            for (Message *message            = mSendQueue.GetHeadForPriority(static_cast<Message::Priority>(priority));
+                 message != nullptr; message = message->GetNext())
+            {
+                if (message->GetPriority() != priority)
+                {
+                    break;
+                }
+
+                if (message->GetDoNotEvict())
+                {
+                    continue;
+                }
+
+#if OPENTHREAD_FTD
+                if (!aChecker(*message))
+                {
+                    continue;
+                }
+#endif
+
+                if ((selectionPolicy == kDisregardPartiallySentMsgs) && IsPartiallySent(*message))
+                {
+                    continue;
+                }
+
+                evict = message;
+                ExitNow();
+            }
+        }
+    }
+
+exit:
+    return evict;
+}
+
+bool MeshForwarder::IsPartiallySent(const Message &aMessage) const
+{
+    bool isPartiallySent = true;
+
+    VerifyOrExit(&aMessage != mSendMessage);
+
+    if (aMessage.IsDirectTransmission())
+    {
+        VerifyOrExit(aMessage.GetOffset() == 0);
+    }
+
+#if OPENTHREAD_FTD
+    if (aMessage.IsIndirectTransmission())
+    {
+        for (const Child &child : Get<ChildTable>().Iterate(Child::kInStateAnyExceptInvalid))
+        {
+            VerifyOrExit(!child.IsSendingIndirectMsg(aMessage));
+        }
+    }
+#endif
+
+    isPartiallySent = false;
+
+exit:
+    return isPartiallySent;
+}
 
 #if OPENTHREAD_CONFIG_DELAY_AWARE_QUEUE_MANAGEMENT_ENABLE
 
@@ -324,9 +458,7 @@ exit:
 #if OPENTHREAD_CONFIG_TX_QUEUE_STATISTICS_ENABLE
         mTxQueueStats.UpdateFor(aMessage);
 #endif
-        LogMessage(kMessageQueueMgmtDrop, aMessage);
-        FinalizeMessageDirectTx(aMessage, kErrorDrop);
-        RemoveMessageIfNoPendingTx(aMessage);
+        FinalizeDirectTxAndRemoveMessageIfNoPendingTx(aMessage, kErrorDrop, kMessageQueueMgmtDrop);
     }
 
     return error;
@@ -425,20 +557,18 @@ bool MeshForwarder::IsDirectTxQueueOverMaxFrameThreshold(void) const
     return (frameCount > OPENTHREAD_CONFIG_MAX_FRAMES_IN_DIRECT_TX_QUEUE);
 }
 
-void MeshForwarder::ApplyDirectTxQueueLimit(Message &aMessage)
+Error MeshForwarder::ApplyDirectTxQueueLimit(Message &aMessage)
 {
-    Error error;
-    bool  originalEvictFlag;
+    Error error = kErrorNone;
+    bool  shouldUpdateSendMsgEvictFlag;
 
     VerifyOrExit(aMessage.IsDirectTransmission());
     VerifyOrExit(IsDirectTxQueueOverMaxFrameThreshold());
 
-    originalEvictFlag = aMessage.GetDoNotEvict();
-
-    do
+#if OPENTHREAD_CONFIG_DELAY_AWARE_QUEUE_MANAGEMENT_ENABLE
     {
         // We mark the "do not evict" flag on the new `aMessage` so
-        // that it will not be removed from `RemoveAgedMessages()`.
+        // that it will not be removed in `RemoveAgedMessages()` call.
         // This protects against the unlikely case where the newly
         // queued `aMessage` may already be aged due to execution
         // being interrupted for a long time between the queuing of
@@ -446,22 +576,64 @@ void MeshForwarder::ApplyDirectTxQueueLimit(Message &aMessage)
         // do not want the message to be potentially removed and
         // freed twice.
 
+        bool originalEvictFlag = aMessage.GetDoNotEvict();
+        bool didRemove;
+
         aMessage.SetDoNotEvict(true);
-        error = EvictMessage(aMessage.GetPriority(), kEvictReasonDirectTxQueueAtLimit);
+        didRemove = (RemoveAgedMessages() == kErrorNone);
         aMessage.SetDoNotEvict(originalEvictFlag);
 
-        if (error == kErrorNone)
+        if (didRemove)
         {
             VerifyOrExit(IsDirectTxQueueOverMaxFrameThreshold());
         }
+    }
+#endif
 
-    } while (error == kErrorNone);
+    // Exclude `mSendMessage` when evicting due to the direct TX
+    // queue limit, as `IsDirectTxQueueOverMaxFrameThreshold()`
+    // does not count `mSendMessage` toward the frame threshold,
+    // and evicting it would abort an in-flight transmission
+    // without reducing the counted frames in the queue.
 
-    LogMessage(kMessageFullQueueDrop, aMessage);
-    FinalizeMessageDirectTx(aMessage, kErrorDrop);
+    shouldUpdateSendMsgEvictFlag = ((mSendMessage != nullptr) && !mSendMessage->GetDoNotEvict());
+
+    if (shouldUpdateSendMsgEvictFlag)
+    {
+        mSendMessage->SetDoNotEvict(true);
+    }
+
+    do
+    {
+        Message *evict;
+
+#if OPENTHREAD_MTD
+        evict = FindMessageToEvict(aMessage.GetPriority());
+#elif OPENTHREAD_FTD
+        evict = FindMessageToEvict(kLowerPriorityThan, aMessage.GetPriority(), Message::AcceptDirectTx);
+#endif
+
+        if (evict == nullptr)
+        {
+            // If no lower-priority message can be evicted, drop the
+            // newly queued `aMessage` itself.
+
+            evict = &aMessage;
+            error = kErrorDrop;
+        }
+
+        FinalizeDirectTxAndRemoveMessageIfNoPendingTx(
+            *evict, kErrorDrop, (error == kErrorDrop) ? kMessageFullQueueDrop : kMessageFullQueueEvict);
+
+    } while ((error == kErrorNone) && IsDirectTxQueueOverMaxFrameThreshold());
+
+    if (shouldUpdateSendMsgEvictFlag && (mSendMessage != nullptr))
+    {
+        mSendMessage->SetDoNotEvict(false);
+    }
 
 exit:
-    return;
+    return error;
 }
 
 #endif // (OPENTHREAD_CONFIG_MAX_FRAMES_IN_DIRECT_TX_QUEUE > 0)
@@ -589,9 +761,7 @@ Message *MeshForwarder::PrepareNextDirectTransmission(void)
 #if OPENTHREAD_CONFIG_TX_QUEUE_STATISTICS_ENABLE
             mTxQueueStats.UpdateFor(*curMessage);
 #endif
-            LogMessage(kMessageDrop, *curMessage, error);
-            FinalizeMessageDirectTx(*curMessage, error);
-            RemoveMessageIfNoPendingTx(*curMessage);
+            FinalizeDirectTxAndRemoveMessageIfNoPendingTx(*curMessage, error, kMessageDrop);
             continue;
         }
     }
@@ -759,7 +929,9 @@ Mac::TxFrame *MeshForwarder::PrepareFrame(Mac::TxFrames &aTxFrames)
 #if OPENTHREAD_FTD
 
     case Message::kType6lowpan:
-        mMessageNextOffset = Get<MessageFramer>().PrepareMeshFrame(*frame, *mSendMessage, mMacAddrs);
+        mMessageNextOffset = mSendMessage->GetLength();
+        VerifyOrExit(Get<MessageFramer>().PrepareMeshFrame(*frame, *mSendMessage, mMacAddrs) == kErrorNone,
+                     frame = nullptr);
         break;
 
     case Message::kTypeSupervision:
@@ -805,7 +977,7 @@ Neighbor *MeshForwarder::UpdateNeighborOnFrameTxDone(Mac::TxFrame::ParseInfo &aF
     // `SendDone` event from `Mac` layer with success status and
     // wait for deferred ack callback instead.
 #if OPENTHREAD_CONFIG_MULTI_RADIO
-    if (aFrameInfo.GetTxFrame()->GetRadioType() == Radio::kTypeTrel)
+    if (aFrameInfo.GetRadioType() == Radio::kTypeTrel)
 #endif
     {
         VerifyOrExit(aError != kErrorNone);
@@ -901,7 +1073,7 @@ void MeshForwarder::HandleFrameTxDone(Mac::TxFrame::ParseInfo &aFrameInfo, Error
     }
 #endif
 
-    if (!aFrameInfo.GetTxFrame()->IsEmpty())
+    if (!aFrameInfo.IsEmpty())
     {
         neighbor =
             UpdateNeighborOnFrameTxDone(aFrameInfo, aError, aFrameInfo.mAddrs.mDestination, /* aIsDataPoll */ false);
@@ -970,21 +1142,30 @@ void MeshForwarder::UpdateSendMessage(Error aFrameTxError, Mac::Address &aMacDes
     Get<HistoryTracker::Local>().RecordTxMessage(*mSendMessage, aMacDest, mSendMessage->GetTxSuccess());
 #endif
 
-    LogMessage(kMessageTransmit, *mSendMessage, txError, &aMacDest);
-    FinalizeMessageDirectTx(*mSendMessage, txError);
-    RemoveMessageIfNoPendingTx(*mSendMessage);
+    FinalizeDirectTxAndRemoveMessageIfNoPendingTx(*mSendMessage, txError, kMessageTransmit, &aMacDest);
 
 exit:
     mScheduleTransmissionTask.Post();
 }
 
-void MeshForwarder::FinalizeMessageDirectTx(Message &aMessage, Error aError)
+void MeshForwarder::FinalizeDirectTxAndRemoveMessageIfNoPendingTx(Message      &aMessage,
+                                                                  Error         aError,
+                                                                  MessageAction aAction)
 {
-    // Finalizes the direct transmission of `aMessage`. This can be
-    // triggered by successful delivery (all fragments reaching the
-    // destination), failure of any fragment, queue management
-    // dropping the message, or eviction of message to accommodate
-    // higher priority messages.
+    FinalizeDirectTxAndRemoveMessageIfNoPendingTx(aMessage, aError, aAction, nullptr);
+}
+
+void MeshForwarder::FinalizeDirectTxAndRemoveMessageIfNoPendingTx(Message            &aMessage,
+                                                                  Error               aError,
+                                                                  MessageAction       aAction,
+                                                                  const Mac::Address *aMacDest)
+{
+    // Finalizes the direct transmission of `aMessage` and removes it
+    // from the send queue if it has no remaining pending transmissions
+    // (direct or indirect). This can be triggered by successful
+    // delivery (all fragments reaching the destination), failure of
+    // any fragment, queue management dropping the message, or eviction
+    // of the message to accommodate higher priority messages.
 
     VerifyOrExit(aMessage.IsDirectTransmission());
 
@@ -998,45 +1179,32 @@ void MeshForwarder::FinalizeMessageDirectTx(Message &aMessage, Error aError)
 
     mCounters.UpdateOnTxDone(aMessage, aMessage.GetTxSuccess());
 
-    aMessage.InvokeTxCallback(aError);
-
-exit:
-    return;
-}
-
-void MeshForwarder::FinalizeAndRemoveMessage(Message &aMessage, Error aError, MessageAction aAction)
-{
-    LogMessage(aAction, aMessage, aError);
-
-#if OPENTHREAD_FTD
-    FinalizeMessageIndirectTxs(aMessage);
-#endif
-
-    FinalizeMessageDirectTx(aMessage, aError);
-    RemoveMessageIfNoPendingTx(aMessage);
-}
-
-bool MeshForwarder::RemoveMessageIfNoPendingTx(Message &aMessage)
-{
-    bool didRemove = false;
-
-#if OPENTHREAD_FTD
-    VerifyOrExit(!aMessage.IsDirectTransmission() && !aMessage.IsIndirectTransmission());
-#else
-    VerifyOrExit(!aMessage.IsDirectTransmission());
-#endif
-
     if (mSendMessage == &aMessage)
     {
         mSendMessage       = nullptr;
         mMessageNextOffset = 0;
     }
 
-    mSendQueue.DequeueAndFree(aMessage);
-    didRemove = true;
+    LogMessage(aAction, aMessage, aError, aMacDest);
+
+    aMessage.InvokeTxCallback(aError);
 
 exit:
-    return didRemove;
+    RemoveMessageIfNoPendingTx(aMessage);
+}
+
+void MeshForwarder::RemoveMessageIfNoPendingTx(Message &aMessage)
+{
+#if OPENTHREAD_FTD
+    VerifyOrExit(!aMessage.IsDirectTransmission() && !aMessage.IsIndirectTransmission());
+#else
+    VerifyOrExit(!aMessage.IsDirectTransmission());
+#endif
+
+    mSendQueue.DequeueAndFree(aMessage);
+
+exit:
+    return;
 }
 
 Error MeshForwarder::RxInfo::ParseIp6Headers(void)
@@ -1094,12 +1262,50 @@ exit:
     }
 }
 
+bool MeshForwarder::ReassemblySourcesMatch(const Mac::Address &aFirstSource, const Mac::Address &aSource) const
+{
+    bool                matches = false;
+    const Mac::Address *shortSource;
+    const Mac::Address *extendedSource;
+    const Neighbor     *neighbor = nullptr;
+
+    VerifyOrExit(!aFirstSource.IsNone() && !aSource.IsNone());
+
+    if (aFirstSource == aSource)
+    {
+        ExitNow(matches = true);
+    }
+
+    VerifyOrExit(aFirstSource.GetType() != aSource.GetType());
+
+    // A direct neighbor can legitimately switch between extended and short source addressing during attach.
+    // Treat the two forms as the same identity only when the short address resolves to the extended address.
+    shortSource    = aFirstSource.IsShort() ? &aFirstSource : &aSource;
+    extendedSource = aFirstSource.IsExtended() ? &aFirstSource : &aSource;
+    neighbor       = Get<NeighborTable>().FindNeighbor(shortSource->GetShort(), Neighbor::kInStateAnyExceptInvalid);
+
+    VerifyOrExit(neighbor != nullptr);
+    matches = (neighbor->GetExtAddress() == extendedSource->GetExtended());
+
+exit:
+    return matches;
+}
+
+void MeshForwarder::RemoveReassemblyMetadata(Message &aMessage)
+{
+    ReassemblyMetadata metadata;
+
+    metadata.RemoveFrom(aMessage);
+}
+
 void MeshForwarder::HandleFragment(RxInfo &aRxInfo)
 {
     Error                  error = kErrorNone;
     Lowpan::FragmentHeader fragmentHeader;
     Message               *message = nullptr;
+    ReassemblyMetadata     metadata;
 
+    VerifyOrExit(!aRxInfo.GetSrcAddr().IsNone(), error = kErrorDrop);
     SuccessOrExit(error = fragmentHeader.ParseFrom(aRxInfo.mFrameData));
 
 #if OPENTHREAD_CONFIG_MULTI_RADIO
@@ -1165,6 +1371,11 @@ void MeshForwarder::HandleFragment(RxInfo &aRxInfo)
             ClearReassemblyList();
         }
 
+        metadata.mDatagramSize = datagramSize;
+        metadata.mSource       = aRxInfo.GetSrcAddr();
+
+        SuccessOrExit(error = metadata.AppendTo(*message));
+
         mReassemblyList.Enqueue(*message);
 
         Get<TimeTicker>().RegisterReceiver(TimeTicker::kMeshForwarder);
@@ -1173,11 +1384,14 @@ void MeshForwarder::HandleFragment(RxInfo &aRxInfo)
     {
         for (Message &msg : mReassemblyList)
         {
+            metadata.ReadFrom(msg);
+
             // Security Check: only consider reassembly buffers that had the same Security Enabled setting.
-            if (msg.GetLength() == fragmentHeader.GetDatagramSize() &&
+            if (metadata.mDatagramSize == fragmentHeader.GetDatagramSize() &&
                 msg.GetDatagramTag() == fragmentHeader.GetDatagramTag() &&
+                ReassemblySourcesMatch(metadata.mSource, aRxInfo.GetSrcAddr()) &&
                 msg.GetOffset() == fragmentHeader.GetDatagramOffset() &&
-                msg.GetOffset() + aRxInfo.mFrameData.GetLength() <= fragmentHeader.GetDatagramSize() &&
+                msg.GetOffset() + aRxInfo.mFrameData.GetLength() <= metadata.mDatagramSize &&
                 msg.IsLinkSecurityEnabled() == aRxInfo.IsLinkSecurityEnabled())
             {
                 message = &msg;
@@ -1209,8 +1423,9 @@ exit:
 
     if (error == kErrorNone)
     {
-        if (message->DetermineLengthAfterOffset() == 0)
+        if (message->GetOffset() == metadata.mDatagramSize)
         {
+            RemoveReassemblyMetadata(*message);
             mReassemblyList.Dequeue(*message);
             IgnoreError(HandleDatagram(*message, aRxInfo.GetSrcAddr()));
         }
@@ -1226,22 +1441,22 @@ void MeshForwarder::ClearReassemblyList(void)
 {
     for (Message &message : mReassemblyList)
     {
+        RemoveReassemblyMetadata(message);
         LogMessage(kMessageReassemblyDrop, message, kErrorNoFrameReceived);
         mCounters.UpdateOnDrop(message);
         mReassemblyList.DequeueAndFree(message);
     }
 }
 
-Error MeshForwarder::RemoveUnsecureReassemblyMessage(EvictReason aEvictReason)
+Error MeshForwarder::RemoveUnsecureReassemblyMessage(void)
 {
     Error error = kErrorNotFound;
-
-    VerifyOrExit(aEvictReason == kEvictReasonNoMessageBuffer);
 
     for (Message &message : mReassemblyList)
     {
         if (!message.IsLinkSecurityEnabled())
         {
+            RemoveReassemblyMetadata(message);
             LogMessage(kMessageReassemblyDrop, message, kErrorNoBufs);
             mCounters.UpdateOnDrop(message);
             mReassemblyList.DequeueAndFree(message);
@@ -1277,6 +1492,7 @@ bool MeshForwarder::UpdateReassemblyList(void)
     {
         if (now - message.GetTimestamp() >= TimeMilli::SecToMsec(kReassemblyTimeout))
         {
+            RemoveReassemblyMetadata(message);
             LogMessage(kMessageReassemblyDrop, message, kErrorReassemblyTimeout);
             mCounters.UpdateOnDrop(message);
             mReassemblyList.DequeueAndFree(message);
@@ -1348,7 +1564,6 @@ Error MeshForwarder::HandleDatagram(Message &aMessage, const Mac::Address &aMacS
 
     mCounters.UpdateOnRx(aMessage);
 
-    aMessage.SetLoopbackToHostAllowed(true);
     aMessage.SetOrigin(Message::kOriginThreadNetif);
 
     return Get<Ip6::Ip6>().HandleDatagram(OwnedPtr<Message>(&aMessage));

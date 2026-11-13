@@ -53,7 +53,7 @@ void CslTxScheduler::HandleRadioBusLatencyChanged(void)
     // 150 bytes for bus Tx time estimation
     static constexpr uint16_t kMaxFrameSize = 150;
 
-    mCslFrameRequestAheadUs = Mac::kCslRequestAhead + Get<Radio::Radio>().CalculateBusTransferTime(kMaxFrameSize);
+    mCslFrameRequestAheadUs = kCslRequestAhead + Get<Radio::Radio>().CalculateBusTransferTime(kMaxFrameSize);
 
     LogInfo("Set frame request ahead: %lu usec", ToUlong(mCslFrameRequestAheadUs));
 }
@@ -107,13 +107,7 @@ void CslTxScheduler::Clear(void)
 #if OPENTHREAD_FTD
     for (Child &child : Get<ChildTable>().Iterate(Child::kInStateAnyExceptInvalid))
     {
-        child.ResetCslTxAttempts();
-        child.SetCslSynchronized(false);
-        child.SetCslChannel(0);
-        child.SetCslTimeout(0);
-        child.SetCslPeriod(0);
-        child.SetCslPhase(0);
-        child.SetCslLastHeard(TimeMilli(0));
+        child.ClearCsl();
     }
 #endif
 
@@ -319,7 +313,7 @@ void CslTxScheduler::HandleFrameTxDone(const Mac::TxFrame::ParseInfo &aFrameInfo
         break;
 
     case kErrorNoAck:
-        OT_ASSERT(!aFrameInfo.mIsSecurityEnabled || aFrameInfo.GetTxFrame()->IsHeaderUpdated());
+        OT_ASSERT(!aFrameInfo.mIsSecurityEnabled || aFrameInfo.IsHeaderUpdated());
 
         mCslTxNeighbor->IncrementCslTxAttempts();
         LogInfo("CSL tx to %04x failed, attempt %d/%d", mCslTxNeighbor->GetRloc16(), mCslTxNeighbor->GetCslTxAttempts(),
@@ -341,11 +335,11 @@ void CslTxScheduler::HandleFrameTxDone(const Mac::TxFrame::ParseInfo &aFrameInfo
         // dropped until indirect tx attempts count reaches max. So here it
         // would set sequence number and schedule next CSL tx.
 
-        if (!aFrameInfo.GetTxFrame()->IsEmpty())
+        if (!aFrameInfo.IsEmpty())
         {
             mCslTxNeighbor->SetIndirectDataSequenceNumber(aFrameInfo.mSequenceNum);
 
-            if (aFrameInfo.mIsSecurityEnabled && aFrameInfo.GetTxFrame()->IsHeaderUpdated())
+            if (aFrameInfo.mIsSecurityEnabled && aFrameInfo.IsHeaderUpdated())
             {
                 mCslTxNeighbor->SetIndirectFrameCounter(aFrameInfo.mFrameCounter);
                 mCslTxNeighbor->SetIndirectKeyIndex(aFrameInfo.mKeyIndex);

@@ -337,7 +337,7 @@ void Mle::SetRole(DeviceRole aRole)
     }
 
 #if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
-    Get<Mac::Mac>().SetCslCapable(IsCslSupported() && !IsRxOnWhenIdle());
+    UpdateCslState();
 #endif
 
 exit:
@@ -580,6 +580,9 @@ void Mle::SetStateDetached(void)
 #endif
 
     SetRole(kRoleDetached);
+#if OPENTHREAD_CONFIG_MLR_ENABLE || (OPENTHREAD_FTD && OPENTHREAD_CONFIG_TMF_PROXY_MLR_ENABLE)
+    Get<Mlr::Manager>().UpdateState();
+#endif
     mAttacher.CancelAttachOnRoleChange();
     mDelayedSender.RemoveScheduledChildUpdateRequestToParent();
     mRetxTracker.Stop();
@@ -751,6 +754,9 @@ Error Mle::SetDeviceMode(DeviceMode aDeviceMode)
     else if (IsChild())
     {
         SetStateChild(GetRloc16());
+#if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
+        UpdateCslState();
+#endif
         IgnoreError(SendChildUpdateRequestToParent());
     }
 
@@ -970,6 +976,8 @@ exit:
 }
 
 bool Mle::IsCslSupported(void) const { return IsChild() && GetParent().IsThreadVersion1p2OrHigher(); }
+
+void Mle::UpdateCslState(void) { Get<Mac::Mac>().SetCslCapable(IsCslSupported() && !IsRxOnWhenIdle()); }
 
 #endif // OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
 
@@ -3216,6 +3224,15 @@ void Mle::DelayedSender::ScheduleLinkAccept(const LinkAcceptInfo &aInfo, uint32_
     AddSchedule(kTypeLinkAccept, destination, aDelay, &aInfo, sizeof(aInfo));
 }
 
+bool Mle::DelayedSender::HasAnyScheduledLinkAccept(const Router &aRouter) const
+{
+    Ip6::Address destination;
+
+    destination.InitAsLinkLocalAddress(aRouter.GetExtAddress());
+
+    return HasMatchingSchedule(kTypeLinkAccept, destination);
+}
+
 void Mle::DelayedSender::ScheduleDiscoveryResponse(const Ip6::Address          &aDestination,
                                                    const DiscoveryResponseInfo &aInfo,
                                                    uint32_t                     aDelay)
@@ -3364,7 +3381,7 @@ void Mle::DelayedSender::Execute(const Schedule &aSchedule)
         IgnoreError(aSchedule.Read(sizeof(Header), rloc16));
         router = Get<RouterTable>().FindRouterByRloc16(rloc16);
 
-        if (router != nullptr)
+        if ((router != nullptr) && (router->IsStateLinkRequest() || router->IsStateValid()))
         {
             Get<Mle>().SendLinkRequest(router);
         }

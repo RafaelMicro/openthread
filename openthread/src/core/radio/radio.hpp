@@ -103,6 +103,7 @@ constexpr uint32_t kSupportedChannels = OPENTHREAD_CONFIG_PLATFORM_RADIO_PROPRIE
 constexpr uint8_t  kChannelMin        = OPENTHREAD_CONFIG_PLATFORM_RADIO_PROPRIETARY_CHANNEL_MIN;
 constexpr uint8_t  kChannelMax        = OPENTHREAD_CONFIG_PLATFORM_RADIO_PROPRIETARY_CHANNEL_MAX;
 #endif
+constexpr uint8_t kDefaultChannel = OPENTHREAD_CONFIG_DEFAULT_CHANNEL;
 
 constexpr uint8_t kFrameMinSize = OT_RADIO_FRAME_MIN_SIZE;
 constexpr uint8_t kFrameMaxSize = OT_RADIO_FRAME_MAX_SIZE;
@@ -138,6 +139,7 @@ enum Capability : uint16_t
     kCapRxOnWhenIdle       = OT_RADIO_CAPS_RX_ON_WHEN_IDLE,      ///< Supports RxOnWhenIdle handling.
     kCapTransmitFramePower = OT_RADIO_CAPS_TRANSMIT_FRAME_POWER, ///< Supports setting per-frame transmit power.
     kCapAltShortAddr       = OT_RADIO_CAPS_ALT_SHORT_ADDR,       ///< Supports setting alternate short address.
+    kCapScheduledTx        = OT_RADIO_CAPS_SCHEDULED_TX,         ///< Radio supports scheduling frame TX.
 };
 
 /**
@@ -228,6 +230,19 @@ public:
     void HandleTransmitDone(Mac::TxFrame &aFrame, Mac::RxFrame *aAckFrame, Error aError);
 
     /**
+     * This callback method handles a "Scheduled Transmit Done" event from radio platform.
+     *
+     * Used when radio provides the `kCapScheduledTx` capability. It is called from `otPlatRadioScheduledTxDone()`.
+     *
+     * @param[in]  aAckFrame  A pointer to the ACK frame, `nullptr` if no ACK was received.
+     * @param[in]  aError     kErrorNone when the frame was transmitted,
+     *                        kErrorNoAck when the frame was transmitted but no ACK was received,
+     *                        kErrorChannelAccessFailure tx could not take place due to activity on the
+     *                        channel, kErrorAbort when transmission was aborted for other reasons.
+     */
+    void HandleScheduledTxDone(Mac::RxFrame *aAckFrame, Error aError);
+
+    /**
      * This callback method handles "Energy Scan Done" event from radio platform.
      *
      * Is used when radio provides the `kCapEnergyScan` capability. It is called from `otPlatRadioEnergyScanDone()`.
@@ -240,6 +255,13 @@ public:
      * This callback method handles "Bus Latency Changed" event from radio platform.
      */
     void HandleBusLatencyChanged(void);
+
+    /**
+     * This callback method handles a "Radio Availability Updated" event from radio platform.
+     *
+     * It is called from `otPlatRadioAvailabilityUpdated()`.
+     */
+    void HandleRadioAvailabilityUpdated(void);
 
 #if OPENTHREAD_CONFIG_DIAG_ENABLE
     /**
@@ -378,6 +400,16 @@ public:
      * @returns The radio capability bit vector (see `Capability` definitions).
      */
     Capabilities GetCaps(void);
+
+    /**
+     * Gets the current radio availability schedule.
+     *
+     * @param[out] aAvailability  A reference to an `otRadioAvailability` to populate.
+     *
+     * @retval kErrorNone            Successfully retrieved the radio availability schedule.
+     * @retval kErrorNotImplemented  The radio platform does not support reporting radio availability.
+     */
+    Error GetAvailability(otRadioAvailability &aAvailability);
 
     /**
      * Gets the radio receive sensitivity value.
@@ -665,6 +697,44 @@ public:
     Error Transmit(Mac::TxFrame &aFrame);
 
     /**
+     * Gets the radio frame buffer for scheduled transmissions.
+     *
+     * Used when radio provides the `kCapScheduledTx` capability.
+     *
+     * OpenThread forms the IEEE 802.15.4 frame in this buffer then calls `ScheduleTx()` to schedule transmission.
+     *
+     * @returns A reference to the scheduled transmit frame buffer.
+     */
+    Mac::TxFrame &GetScheduledTxFrame(void);
+
+    /**
+     * Schedules a frame transmission at a specific target radio time.
+     *
+     * Used when radio provides the `kCapScheduledTx` capability.
+     *
+     * The caller must form the IEEE 802.15.4 frame in the buffer provided by `GetScheduledTxFrame()` before
+     * scheduling transmission.
+     *
+     * @param[in] aTxTime  The target transmission time (end of SFD at the local antenna) in microseconds relative to
+     *                     the local radio clock (see `GetNow()`).
+     *
+     * @retval kErrorNone          Successfully scheduled the frame transmission.
+     * @retval kErrorBusy          A previously scheduled transmission is still active.
+     * @retval kErrorInvalidState  The radio is disabled.
+     */
+    Error ScheduleTx(Time64 aTxTime);
+
+    /**
+     * Cancels a previously scheduled transmission.
+     *
+     * Used when radio provides the `kCapScheduledTx` capability.
+     *
+     * @retval kErrorNone  Successfully canceled the scheduled transmission (or no scheduled transmission was pending).
+     * @retval kErrorBusy  The scheduled transmission has already started and could not be canceled.
+     */
+    Error CancelScheduledTx(void);
+
+    /**
      * Gets the most recent RSSI measurement.
      *
      * @returns The RSSI in dBm when it is valid.  127 when RSSI is invalid.
@@ -898,6 +968,11 @@ inline uint32_t Radio::GetPreferredChannelMask(void) { return otPlatRadioGetPref
 
 inline Capabilities Radio::GetCaps(void) { return otPlatRadioGetCaps(GetInstancePtr()); }
 
+inline Error Radio::GetAvailability(otRadioAvailability &aAvailability)
+{
+    return otPlatRadioGetAvailability(GetInstancePtr(), &aAvailability);
+}
+
 inline int8_t Radio::GetReceiveSensitivity(void) const { return otPlatRadioGetReceiveSensitivity(GetInstancePtr()); }
 
 inline void Radio::SetPanId(Mac::PanId aPanId) { otPlatRadioSetPanId(GetInstancePtr(), aPanId); }
@@ -1017,6 +1092,15 @@ inline Mac::TxFrame &Radio::GetTransmitBuffer(void)
     return *static_cast<Mac::TxFrame *>(otPlatRadioGetTransmitBuffer(GetInstancePtr()));
 }
 
+inline Mac::TxFrame &Radio::GetScheduledTxFrame(void)
+{
+    return *static_cast<Mac::TxFrame *>(otPlatRadioGetScheduledTxFrame(GetInstancePtr()));
+}
+
+inline Error Radio::ScheduleTx(Time64 aTxTime) { return otPlatRadioScheduleTx(GetInstancePtr(), aTxTime); }
+
+inline Error Radio::CancelScheduledTx(void) { return otPlatRadioCancelScheduledTx(GetInstancePtr()); }
+
 inline int8_t Radio::GetRssi(void) { return otPlatRadioGetRssi(GetInstancePtr()); }
 
 inline Error Radio::EnergyScan(uint8_t aScanChannel, uint16_t aScanDuration)
@@ -1051,6 +1135,8 @@ inline bool Radio::GetDiagMode(void) { return otPlatDiagModeGet(); }
 #else //----------------------------------------------------------------------------------------------------------------
 
 inline Capabilities Radio::GetCaps(void) { return kCapAckTimeout | kCapCsmaBackoff | kCapTransmitRetries; }
+
+inline Error Radio::GetAvailability(otRadioAvailability &) { return kErrorNotImplemented; }
 
 inline int8_t Radio::GetReceiveSensitivity(void) const { return kDefaultReceiveSensitivity; }
 
@@ -1114,6 +1200,15 @@ inline Mac::TxFrame &Radio::GetTransmitBuffer(void)
 }
 
 inline Error Radio::Transmit(Mac::TxFrame &) { return kErrorAbort; }
+
+inline Mac::TxFrame &Radio::GetScheduledTxFrame(void)
+{
+    return *static_cast<Mac::TxFrame *>(otPlatRadioGetScheduledTxFrame(GetInstancePtr()));
+}
+
+inline Error Radio::ScheduleTx(Time64) { return kErrorNotImplemented; }
+
+inline Error Radio::CancelScheduledTx(void) { return kErrorNotImplemented; }
 
 inline int8_t Radio::GetRssi(void) { return kInvalidRssi; }
 

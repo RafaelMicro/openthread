@@ -47,11 +47,12 @@ RegisterLogModule("LinkRaw");
 
 LinkRaw::LinkRaw(Instance &aInstance)
     : InstanceLocator(aInstance)
-    , mReceiveChannel(OPENTHREAD_CONFIG_DEFAULT_CHANNEL)
+    , mReceiveChannel(Radio::kDefaultChannel)
     , mPanId(kPanIdBroadcast)
     , mReceiveDoneCallback(nullptr)
     , mTransmitDoneCallback(nullptr)
     , mEnergyScanDoneCallback(nullptr)
+    , mRadioAvailabilityUpdatedCallback(nullptr)
 #if OPENTHREAD_RADIO
     , mSubMac(aInstance)
 #elif OPENTHREAD_CONFIG_LINK_RAW_ENABLE
@@ -66,10 +67,8 @@ void LinkRaw::Init(void)
     mEnergyScanDoneCallback = nullptr;
     mTransmitDoneCallback   = nullptr;
     mReceiveDoneCallback    = nullptr;
-
-    mReceiveChannel      = OPENTHREAD_CONFIG_DEFAULT_CHANNEL;
-    mPanId               = kPanIdBroadcast;
-    mReceiveDoneCallback = nullptr;
+    mReceiveChannel         = Radio::kDefaultChannel;
+    mPanId                  = kPanIdBroadcast;
 #if OPENTHREAD_RADIO
     mSubMac.Init();
 #endif
@@ -109,6 +108,15 @@ Error LinkRaw::SetReceiveDone(otLinkRawReceiveDone aCallback)
         IgnoreError(mSubMac.Disable());
     }
 #endif
+
+    if (!enable)
+    {
+        // An ongoing transmission or energy scan is dropped without
+        // completing it, so make sure its done callback is not invoked
+        // later.
+        mTransmitDoneCallback   = nullptr;
+        mEnergyScanDoneCallback = nullptr;
+    }
 
     mReceiveDoneCallback = aCallback;
 
@@ -194,6 +202,14 @@ void LinkRaw::InvokeReceiveDone(RxFrame *aFrame, Error aError)
     }
 }
 
+void LinkRaw::HandleRadioAvailabilityUpdated(void)
+{
+    if (mRadioAvailabilityUpdatedCallback != nullptr)
+    {
+        mRadioAvailabilityUpdatedCallback(&GetInstance());
+    }
+}
+
 Error LinkRaw::Transmit(otLinkRawTransmitDone aCallback)
 {
     Error error = kErrorNone;
@@ -209,7 +225,7 @@ exit:
 
 void LinkRaw::InvokeTransmitDone(TxFrame::ParseInfo &aFrameInfo, RxFrame *aAckFrame, Error aError)
 {
-    LogDebg("TransmitDone(%u bytes), error:%s", aFrameInfo.GetTxFrame()->GetLength(), ErrorToString(aError));
+    LogDebg("TransmitDone(%u bytes), error:%s", aFrameInfo.GetLength(), ErrorToString(aError));
 
     if (mTransmitDoneCallback)
     {
@@ -277,7 +293,7 @@ void LinkRaw::RecordFrameTransmitStatus(const TxFrame::ParseInfo &aFrameInfo,
     if (aError != kErrorNone)
     {
         LogInfo("Frame tx failed, error:%s, retries:%d/%d, %s", ErrorToString(aError), aRetryCount,
-                aFrameInfo.GetTxFrame()->GetMaxFrameRetries(), aFrameInfo.ToInfoString().AsCString());
+                aFrameInfo.GetMaxFrameRetries(), aFrameInfo.ToInfoString().AsCString());
     }
 }
 

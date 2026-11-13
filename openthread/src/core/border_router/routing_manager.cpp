@@ -530,11 +530,6 @@ void RoutingManager::SendRouterAdvertisement(RouterAdvTxMode aRaTxMode)
         SuccessOrExit(error = mRioAdvertiser.AppendRios(raMsg));
     }
 
-    if (Get<InfraIf>().GetLinkLayerAddress(linkAddr) == kErrorNone)
-    {
-        SuccessOrExit(error = raMsg.AppendLinkLayerOption(linkAddr, Option::kSourceLinkLayerAddr));
-    }
-
     if (mExtraRaOptions.GetLength() > 0)
     {
         SuccessOrExit(error = raMsg.AppendBytes(mExtraRaOptions.GetBytes(), mExtraRaOptions.GetLength()));
@@ -543,6 +538,11 @@ void RoutingManager::SendRouterAdvertisement(RouterAdvTxMode aRaTxMode)
     // A valid RA message should contain at lease one option.
     // Exit when the size of packet is less than the size of header.
     VerifyOrExit(raMsg.ContainsAnyOptions());
+
+    if (Get<InfraIf>().GetLinkLayerAddress(linkAddr) == kErrorNone)
+    {
+        SuccessOrExit(error = raMsg.AppendLinkLayerOption(linkAddr, Option::kSourceLinkLayerAddr));
+    }
 
     raMsg.GetAsPacket(packet);
 
@@ -632,6 +632,19 @@ void RoutingManager::HandleLocalOnLinkPrefixChanged(void)
     mRoutePublisher.Evaluate();
     Get<RxRaTracker>().HandleLocalOnLinkPrefixChanged();
     ScheduleRoutingPolicyEvaluation(kAfterRandomDelay);
+
+exit:
+    return;
+}
+
+void RoutingManager::HandleFavoredOmrPrefixChanged(void)
+{
+    // This is a callback from `OmrPrefixManager` indicating that
+    // the favored OMR prefix has changed.
+
+    VerifyOrExit(mIsRunning);
+
+    mRoutePublisher.Evaluate();
 
 exit:
     return;
@@ -756,9 +769,10 @@ void RoutingManager::OmrPrefixManager::Stop(void)
     VerifyOrExit(mIsRunning);
 
     RemoveLocalFromNetData();
-    ClearFavoredPrefix();
 
-    mIsRunning = false;
+    mIsRunning    = false;
+    mDefaultRoute = false;
+    ClearFavoredPrefix();
 
 exit:
     return;
@@ -854,6 +868,10 @@ void RoutingManager::OmrPrefixManager::SetFavoredPrefix(const OmrPrefix &aOmrPre
         Get<HistoryTracker::Local>().RecordFavoredOmrPrefix(mFavoredPrefix.GetPrefix(), mFavoredPrefix.GetPreference(),
                                                             mFavoredPrefix.GetPrefix() == mLocalPrefix.GetPrefix());
 #endif
+        if (mIsRunning)
+        {
+            Get<RoutingManager>().HandleFavoredOmrPrefixChanged();
+        }
     }
 }
 
@@ -977,6 +995,11 @@ void RoutingManager::OmrPrefixManager::Evaluate(void)
             ExitNow();
         }
 
+        if (mLocalInNetDataState != kAdded)
+        {
+            ClearFavoredPrefix();
+        }
+
         // Apply a random delay before adding a self-generated ULA OMR
         // prefix. This allows other BRs time to publish their prefixes,
         // or provides time for the `PdPrefixManager` to be delegated a
@@ -1012,8 +1035,8 @@ void RoutingManager::OmrPrefixManager::Evaluate(void)
     // Since there is a `favoredPrefix` different from our local prefix,
     // we remove our local prefix if it is added or scheduled to be added.
 
-    SetFavoredPrefix(favoredPrefix);
     RemoveLocalFromNetData();
+    SetFavoredPrefix(favoredPrefix);
 
 exit:
     return;

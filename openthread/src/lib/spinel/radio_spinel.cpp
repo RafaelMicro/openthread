@@ -44,6 +44,7 @@
 
 #include "common/code_utils.hpp"
 #include "common/new.hpp"
+#include "common/num_utils.hpp"
 #include "lib/platform/exit_code.h"
 #include "lib/spinel/logger.hpp"
 #include "lib/spinel/spinel_driver.hpp"
@@ -121,6 +122,7 @@ RadioSpinel::RadioSpinel(void)
 #endif
     , mTimeSyncEnabled(false)
     , mTimeSyncOn(false)
+    , mSupportsTargetPower(true)
     , mSpinelDriver(nullptr)
 {
     memset(&mCallbacks, 0, sizeof(mCallbacks));
@@ -467,10 +469,12 @@ void RadioSpinel::HandleWaitingResponse(uint32_t          aCommand,
             }
             else
             {
+                // A value can be empty (e.g. an empty array), in which
+                // case zero bytes are unpacked.
                 spinel_ssize_t unpacked =
                     spinel_datatype_vunpack_in_place(aBuffer, aLength, mPropertyFormat, mPropertyArgs);
 
-                VerifyOrExit(unpacked > 0, mError = OT_ERROR_PARSE);
+                VerifyOrExit(unpacked >= 0, mError = OT_ERROR_PARSE);
                 mError = OT_ERROR_NONE;
             }
         }
@@ -1276,15 +1280,38 @@ otError RadioSpinel::EnergyScan(uint8_t aScanChannel, uint16_t aScanDuration)
     mScanChannel    = aScanChannel;
     mScanDuration   = aScanDuration;
     mEnergyScanning = true;
+
+    VerifyOrExit(mRcpFailure == kRcpFailureNone, error = OT_ERROR_FAILED);
 #endif
 
-    SuccessOrExit(error = Set(SPINEL_PROP_MAC_SCAN_MASK, SPINEL_DATATYPE_DATA_S, &aScanChannel, sizeof(uint8_t)));
-    SuccessOrExit(error = Set(SPINEL_PROP_MAC_SCAN_PERIOD, SPINEL_DATATYPE_UINT16_S, aScanDuration));
-    SuccessOrExit(error = Set(SPINEL_PROP_MAC_SCAN_STATE, SPINEL_DATATYPE_UINT8_S, SPINEL_SCAN_STATE_ENERGY));
+    assert(mWaitingTid == 0);
+
+    // Let recovery restart the current channel scan without retrying its individual properties.
+    SuccessOrExit(error = RequestWithExpectedCommand(SPINEL_CMD_PROP_VALUE_IS, SPINEL_CMD_PROP_VALUE_SET,
+                                                     SPINEL_PROP_MAC_SCAN_MASK, SPINEL_DATATYPE_DATA_S, &aScanChannel,
+                                                     sizeof(uint8_t)));
+    SuccessOrExit(error =
+                      RequestWithExpectedCommand(SPINEL_CMD_PROP_VALUE_IS, SPINEL_CMD_PROP_VALUE_SET,
+                                                 SPINEL_PROP_MAC_SCAN_PERIOD, SPINEL_DATATYPE_UINT16_S, aScanDuration));
+    SuccessOrExit(error = RequestWithExpectedCommand(SPINEL_CMD_PROP_VALUE_IS, SPINEL_CMD_PROP_VALUE_SET,
+                                                     SPINEL_PROP_MAC_SCAN_STATE, SPINEL_DATATYPE_UINT8_S,
+                                                     SPINEL_SCAN_STATE_ENERGY));
 
     mChannel = aScanChannel;
 
 exit:
+#if OPENTHREAD_SPINEL_CONFIG_RCP_RESTORATION_MAX_COUNT > 0
+    if (mEnergyScanning && mRcpFailure != kRcpFailureNone && mRcpRestorationEnabled)
+    {
+        RecoverFromRcpFailure();
+        error = OT_ERROR_NONE;
+    }
+
+    if (error != OT_ERROR_NONE)
+    {
+        mEnergyScanning = false;
+    }
+#endif
     return error;
 }
 
@@ -1535,6 +1562,22 @@ otError RadioSpinel::RequestWithPropertyFormatV(const char       *aPropertyForma
     mPropertyFormat = aPropertyFormat;
     error           = RequestV(aCommand, aKey, aFormat, aArgs);
     mPropertyFormat = nullptr;
+
+    return error;
+}
+
+otError RadioSpinel::RequestWithExpectedCommand(uint32_t          aExpectedCommand,
+                                                uint32_t          aCommand,
+                                                spinel_prop_key_t aKey,
+                                                const char       *aFormat,
+                                                ...)
+{
+    otError error;
+    va_list args;
+
+    va_start(args, aFormat);
+    error = RequestWithExpectedCommandV(aExpectedCommand, aCommand, aKey, aFormat, args);
+    va_end(args);
 
     return error;
 }
@@ -2281,17 +2324,33 @@ void RadioSpinel::RestoreProperties(void)
 
     // Guarded, because the table holds `kPowerDefault` for every channel unless
     // the radio URL configured one. Without this, every restore would issue 16
-    // blocking transactions for users who never pass `max-power-table`.
+    // blocking transactions for users who never pass `max-power-table-mbm`.
     if (mMaxPowerTableSet)
     {
         for (uint8_t channel = Radio::kChannelMin; channel <= Radio::kChannelMax; channel++)
         {
-            int8_t power = mMaxPowerTable.GetTransmitPower(channel);
+            int16_t power = mMaxPowerTable.GetTransmitPower(channel);
 
-            if (power != OT_RADIO_POWER_INVALID)
+            if (power != MaxPowerTable::kPowerInvalid)
             {
-                otError error =
-                    Set(SPINEL_PROP_PHY_CHAN_MAX_POWER, SPINEL_DATATYPE_UINT8_S SPINEL_DATATYPE_INT8_S, channel, power);
+                otError error = OT_ERROR_NONE;
+
+                if (mSupportsTargetPower)
+                {
+                    error = Set(SPINEL_PROP_PHY_CHAN_TARGET_POWER, SPINEL_DATATYPE_UINT8_S SPINEL_DATATYPE_INT16_S,
+                                channel, power);
+
+                    if (error == OT_ERROR_NOT_IMPLEMENTED || error == OT_ERROR_NOT_FOUND)
+                    {
+                        mSupportsTargetPower = false;
+                    }
+                }
+
+                if (!mSupportsTargetPower)
+                {
+                    error = Set(SPINEL_PROP_PHY_CHAN_MAX_POWER, SPINEL_DATATYPE_UINT8_S SPINEL_DATATYPE_INT8_S, channel,
+                                ConvertMbmToDbm(power));
+                }
 
                 // An RCP without `SPINEL_PROP_PHY_CHAN_MAX_POWER` answers with
                 // `SPINEL_STATUS_PROP_NOT_FOUND`, which maps to
@@ -2359,20 +2418,55 @@ exit:
     return error;
 }
 
-otError RadioSpinel::SetChannelMaxTransmitPower(uint8_t aChannel, int8_t aMaxPower)
+int8_t RadioSpinel::ConvertMbmToDbm(int16_t aPowerMbm)
+{
+    int8_t powerDbm;
+
+    if (aPowerMbm == MaxPowerTable::kPowerInvalid)
+    {
+        powerDbm = static_cast<int8_t>(OT_RADIO_POWER_INVALID);
+    }
+    else
+    {
+        int16_t dbm = aPowerMbm / 100 - ((aPowerMbm < 0 && aPowerMbm % 100 != 0) ? 1 : 0);
+
+        powerDbm = static_cast<int8_t>(Clamp<int16_t>(dbm, INT8_MIN, OT_RADIO_POWER_INVALID - 1));
+    }
+
+    return powerDbm;
+}
+
+otError RadioSpinel::SetChannelMaxTransmitPower(uint8_t aChannel, int16_t aMaxPower)
 {
     otError error = OT_ERROR_NONE;
 
     VerifyOrExit(Radio::IsChannelValid(aChannel), error = OT_ERROR_INVALID_ARGS);
     mMaxPowerTable.SetTransmitPower(aChannel, aMaxPower);
-    SuccessOrExit(error = Set(SPINEL_PROP_PHY_CHAN_MAX_POWER, SPINEL_DATATYPE_UINT8_S SPINEL_DATATYPE_INT8_S, aChannel,
-                              aMaxPower));
 
-#if OPENTHREAD_SPINEL_CONFIG_RCP_RESTORATION_MAX_COUNT > 0
-    mMaxPowerTableSet = true;
-#endif
+    if (mSupportsTargetPower)
+    {
+        error = Set(SPINEL_PROP_PHY_CHAN_TARGET_POWER, SPINEL_DATATYPE_UINT8_S SPINEL_DATATYPE_INT16_S, aChannel,
+                    aMaxPower);
+
+        if (error != OT_ERROR_NOT_IMPLEMENTED && error != OT_ERROR_NOT_FOUND)
+        {
+            ExitNow();
+        }
+
+        mSupportsTargetPower = false;
+    }
+
+    error = Set(SPINEL_PROP_PHY_CHAN_MAX_POWER, SPINEL_DATATYPE_UINT8_S SPINEL_DATATYPE_INT8_S, aChannel,
+                ConvertMbmToDbm(aMaxPower));
 
 exit:
+#if OPENTHREAD_SPINEL_CONFIG_RCP_RESTORATION_MAX_COUNT > 0
+    if (error == OT_ERROR_NONE)
+    {
+        mMaxPowerTableSet = true;
+    }
+#endif
+
     return error;
 }
 
@@ -2483,6 +2577,7 @@ exit:
 }
 
 otError RadioSpinel::ClearCalibratedPowers(void) { return Set(SPINEL_PROP_PHY_CALIBRATED_POWER, nullptr); }
+#endif // OPENTHREAD_CONFIG_PLATFORM_POWER_CALIBRATION_ENABLE
 
 otError RadioSpinel::SetChannelTargetPower(uint8_t aChannel, int16_t aTargetPower)
 {
@@ -2494,7 +2589,6 @@ otError RadioSpinel::SetChannelTargetPower(uint8_t aChannel, int16_t aTargetPowe
 exit:
     return error;
 }
-#endif // OPENTHREAD_CONFIG_PLATFORM_POWER_CALIBRATION_ENABLE
 
 #if OPENTHREAD_SPINEL_CONFIG_COMPATIBILITY_ERROR_CALLBACK_ENABLE
 void RadioSpinel::SetCompatibilityErrorCallback(otRadioSpinelCompatibilityErrorCallback aCallback, void *aContext)

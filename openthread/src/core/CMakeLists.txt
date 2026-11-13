@@ -91,6 +91,7 @@ set(COMMON_SOURCES
     api/tcp_api.cpp
     api/tcp_ext_api.cpp
     api/thread_api.cpp
+    api/thread_direct_api.cpp
     api/thread_ftd_api.cpp
     api/trel_api.cpp
     api/udp_api.cpp
@@ -248,7 +249,6 @@ set(COMMON_SOURCES
     thread/lowpan.cpp
     thread/mesh_forwarder.cpp
     thread/mesh_forwarder_ftd.cpp
-    thread/mesh_forwarder_mtd.cpp
     thread/message_framer.cpp
     thread/mle.cpp
     thread/mle_ftd.cpp
@@ -283,6 +283,8 @@ set(COMMON_SOURCES
     thread/uri_paths.cpp
     thread/vendor_info.cpp
     thread/version.cpp
+    thread_direct/td_key_manager.cpp
+    thread_direct/td_types.cpp
     utils/channel_manager.cpp
     utils/channel_monitor.cpp
     utils/flash.cpp

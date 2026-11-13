@@ -194,7 +194,6 @@ private:
             , mIsFilterEnabled(false)
             , mReceiveCount(0)
             , mNumFrames(0)
-            , mFilterAddress()
         {
         }
 
@@ -240,6 +239,7 @@ private:
 
     void Output(const char *aFormat, ...);
     void ResetTxPacket(void);
+    void ResetRadioAddresses(void);
     void OutputStats(void);
     void UpdateTxStats(Error aError);
 
@@ -272,6 +272,10 @@ private:
     bool          mDiagSendOn : 1;
     bool          mIsSleepOn : 1;
     bool          mIsAsyncSweep : 1;
+
+    Mac::PanId        mPanId;
+    Mac::ShortAddress mShortAddress;
+    Mac::ExtAddress   mExtAddress;
 #endif
 
     ReceiveConfig        mReceiveConfig;

@@ -70,6 +70,14 @@ public:
 
     void GoInMs(uint32_t aTimeoutInMs = 0) { GoInUs(aTimeoutInMs * OT_US_PER_MS); }
 
+    void UpdateRadioAvailability(otRadioTime64                   aStartTime,
+                                 otRadioAvailabilitySlotDuration aSlotDuration,
+                                 const uint8_t                  *aAvailableSlots,
+                                 const uint8_t                  *aPreferredSlots,
+                                 uint8_t                         aNumSlots);
+
+    virtual otError GetRadioAvailability(otRadioAvailability &aAvailability) const;
+
     virtual uint64_t GetNow() const { return mNow; }
 
     virtual void StartMilliAlarm(uint32_t aT0, uint32_t aDt);
@@ -154,6 +162,29 @@ public:
     virtual void   ChannelMaxTxPowerClear(void) { mChannelMaxTxPower.clear(); }
     virtual size_t ChannelMaxTxPowerCount(void) const { return mChannelMaxTxPower.size(); }
 
+    static constexpr int16_t kNoTargetPower = INT16_MIN;
+
+    virtual otError ChannelTargetPowerSet(uint8_t aChannel, int16_t aTargetPower)
+    {
+        otError error = mChannelTargetPowerError;
+
+        if (error == OT_ERROR_NONE)
+        {
+            mChannelTargetPower[aChannel] = aTargetPower;
+        }
+
+        return error;
+    }
+
+    virtual void    ChannelTargetPowerFailWith(otError aError) { mChannelTargetPowerError = aError; }
+    virtual int16_t ChannelTargetPowerGet(uint8_t aChannel) const
+    {
+        auto it = mChannelTargetPower.find(aChannel);
+        return (it == mChannelTargetPower.end()) ? kNoTargetPower : it->second;
+    }
+    virtual void   ChannelTargetPowerClear(void) { mChannelTargetPower.clear(); }
+    virtual size_t ChannelTargetPowerCount(void) const { return mChannelTargetPower.size(); }
+
 protected:
     void ProcessSchedules(uint64_t &aTimeout);
 
@@ -186,11 +217,20 @@ protected:
 
     std::map<uint32_t, std::vector<std::vector<uint8_t>>> mSettings;
 
-    bool                      mSrcMatchEnabled = false;
-    std::set<uint16_t>        mSrcMatchShortAddrs;
-    std::set<otExtAddress>    mSrcMatchExtAddrs;
-    std::map<uint8_t, int8_t> mChannelMaxTxPower;
-    otError                   mChannelMaxTxPowerError = OT_ERROR_NONE;
+    bool                       mSrcMatchEnabled = false;
+    std::set<uint16_t>         mSrcMatchShortAddrs;
+    std::set<otExtAddress>     mSrcMatchExtAddrs;
+    std::map<uint8_t, int8_t>  mChannelMaxTxPower;
+    otError                    mChannelMaxTxPowerError = OT_ERROR_NONE;
+    std::map<uint8_t, int16_t> mChannelTargetPower;
+    otError                    mChannelTargetPowerError = OT_ERROR_NONE;
+
+    bool                            mHasRadioAvailability   = false;
+    otRadioTime64                   mRadioAvailStartTime    = 0;
+    otRadioAvailabilitySlotDuration mRadioAvailSlotDuration = OT_RADIO_AVAILABILITY_SLOT_DURATION_625_US;
+    uint8_t                         mRadioAvailNumSlots     = 0;
+    std::vector<uint8_t>            mRadioAvailAvailableSlots;
+    std::vector<uint8_t>            mRadioAvailPreferredSlots;
 };
 
 template <> inline void FakePlatform::HandleSchedule<&FakePlatform::mMilliAlarmStart>()

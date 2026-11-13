@@ -136,7 +136,6 @@ Done
 - [vendor](#vendor-name)
 - [verhoeff](#verhoeff-calculate)
 - [version](#version)
-- [wakeup](#wakeup-channel)
 
 ## OpenThread Command Details
 
@@ -1092,6 +1091,7 @@ Rloc: 9c01
 Ext Addr: e2b3540590b0fd87
 Mode: rn
 CSL Synchronized: 1
+CSL Period: 3125
 Net Data: 184
 Timeout: 100
 Age: 0
@@ -3049,6 +3049,29 @@ Get the NAT64 translator packet and error counters.
 Done
 ```
 
+### neighbor \<rloc16\>
+
+Print information about the neighbor with the given RLOC16.
+
+For `Role`, the possible values are `C` (Child) or `R` (Router). `Age` and `Connection Time` are in seconds.
+
+```bash
+> neighbor 0xc800
+Role: R
+Rloc16: 0xc800
+Ext Addr: 9a91556102c39ddb
+Age: 2
+Connection Time: 644
+Avg RSSI: -29
+Last RSSI: -29
+Link Quality In: 3
+Frame Error: 0.00 %
+Msg Error: 0.00 %
+Mode: rdn
+Version: 5
+Done
+```
+
 ### neighbor linkquality
 
 Print link quality info for all neighbors.
@@ -4824,84 +4847,3 @@ Done
 Factory Diagnostics module is enabled only when building OpenThread with `OPENTHREAD_CONFIG_DIAG_ENABLE=1` option. Go [diagnostics module][diag] for more information.
 
 [diag]: ../../src/core/diags/README.md
-
-### wakeup channel
-
-Get the wake-up channel.
-
-Requires `OPENTHREAD_CONFIG_TD_WAKE_INITIATOR_ENABLE` or `OPENTHREAD_CONFIG_TD_WAKE_LISTENER_ENABLE`.
-
-```bash
-> wakeup channel
-12
-Done
-```
-
-### wakeup channel \<channel\>
-
-Set the wake-up channel.
-
-Requires `OPENTHREAD_CONFIG_TD_WAKE_INITIATOR_ENABLE` or `OPENTHREAD_CONFIG_TD_WAKE_LISTENER_ENABLE`.
-
-```bash
-> wakeup channel 12
-Done
-```
-
-### wakeup parameters
-
-Get the wake-up listen interval and duration.
-
-Requires `OPENTHREAD_CONFIG_TD_WAKE_LISTENER_ENABLE`.
-
-```bash
-> wakeup parameters
-interval: 1000000us
-duration: 8000us
-Done
-```
-
-### wakeup parameters \<interval\> \<duration\>
-
-Set the wake-up listen interval and duration.
-
-Requires `OPENTHREAD_CONFIG_TD_WAKE_LISTENER_ENABLE`.
-
-```bash
-> wakeup parameters 1000000 8000
-Done
-```
-
-### wakeup listen
-
-Show the state of wake-up listening feature.
-
-`OPENTHREAD_CONFIG_TD_WAKE_LISTENER_ENABLE` is required.
-
-```bash
-> wakeup listen
-Enabled
-Done
-```
-
-### wakeup listen \[enable|disable\]
-
-Enable/disable listening for wake-up frames.
-
-`OPENTHREAD_CONFIG_TD_WAKE_LISTENER_ENABLE` is required.
-
-```bash
-> wakeup listen enable
-Done
-```
-
-### wakeup wake \<extaddr\> \<wakeup-interval\> \<wakeup-duration\>
-
-Wakes a Wake-up End Device.
-
-`OPENTHREAD_CONFIG_TD_WAKE_INITIATOR_ENABLE` is required.
-
-```bash
-> wakeup wake 1ece0a6c4653a7c1 7500 1090
-Done
-```

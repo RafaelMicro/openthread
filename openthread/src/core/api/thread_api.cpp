@@ -272,6 +272,11 @@ otError otThreadGetNextNeighborInfo(otInstance *aInstance, otNeighborInfoIterato
     return AsCoreType(aInstance).Get<NeighborTable>().GetNextNeighborInfo(*aIterator, AsCoreType(aInfo));
 }
 
+otError otThreadGetNeighborInfoByRloc16(otInstance *aInstance, uint16_t aRloc16, otNeighborInfo *aInfo)
+{
+    return AsCoreType(aInstance).Get<NeighborTable>().GetNeighborInfo(aRloc16, AsCoreType(aInfo));
+}
+
 otDeviceRole otThreadGetDeviceRole(otInstance *aInstance)
 {
     return MapEnum(AsCoreType(aInstance).Get<Mle::Mle>().GetRole());
@@ -480,13 +485,6 @@ void otThreadSetStoreFrameCounterAhead(otInstance *aInstance, uint32_t aStoreFra
 uint32_t otThreadGetStoreFrameCounterAhead(otInstance *aInstance)
 {
     return AsCoreType(aInstance).Get<Mle::Mle>().GetStoreFrameCounterAhead();
-}
-#endif
-
-#if OPENTHREAD_CONFIG_TD_WAKE_INITIATOR_ENABLE
-otError otThreadWakeup(otInstance *, const otExtAddress *, uint16_t, uint16_t, otWakeupCallback, void *)
-{
-    return kErrorNotImplemented;
 }
 #endif
 
