@@ -40,22 +40,30 @@ void mbedtls_sha256_free(mbedtls_sha256_context* ctx) {
 void mbedtls_sha256_clone(mbedtls_sha256_context* dst,
                           const mbedtls_sha256_context* src) {
     // log_info("%s", __func__);
-    if (!src || !dst)
+    if (!src || !dst || src == dst)
         return;
 
     memcpy(dst->buffer, src->buffer, sizeof(src->buffer));
     dst->total_len = src->total_len;
 
-    // deep copy hw ctx
+    // deep copy hw ctx.
+    // mbedtls requires dst to be initialized already (mbedtls_md_setup() ->
+    // mbedtls_sha256_init() allocated dst->sha_hw_ctx), so reuse that buffer.
+    // Allocating unconditionally leaked one hosal_sha256_dev_t per clone
+    // (2+ per DTLS handshake: calc_verify / calc_finished), exhausting the
+    // FreeRTOS heap after ~200 joins.
     if (src->sha_hw_ctx) {
-        dst->sha_hw_ctx = pvPortMalloc(sizeof(hosal_sha256_dev_t));
+        if (dst->sha_hw_ctx == NULL) {
+            dst->sha_hw_ctx = pvPortMalloc(sizeof(hosal_sha256_dev_t));
+        }
         if (dst->sha_hw_ctx) {
             memcpy(dst->sha_hw_ctx, src->sha_hw_ctx,
                    sizeof(hosal_sha256_dev_t));
         } else {
             log_error("malloc failed in sha256_clone");
         }
-    } else {
+    } else if (dst->sha_hw_ctx) {
+        vPortFree(dst->sha_hw_ctx);
         dst->sha_hw_ctx = NULL;
     }
 }

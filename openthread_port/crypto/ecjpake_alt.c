@@ -191,7 +191,12 @@ int parse_ecjpake_keykp_from_buf(const unsigned char* buf, size_t len,
                                  ECJPAKEKeyKP* key, size_t* parsed_len) {
     size_t offset = 0;
     uint8_t point_format = 0;
-    if (len < 1 + 1 + 32 + 32 + 1 + 1 + 32 + 32 + 1 + 32) {
+    uint8_t r_len = 0;
+    // X (1+65) + V (1+65) + r length byte. r itself is variable-length:
+    // mbedtls (ecjpake_zkp_write) writes r with mbedtls_mpi_size(), so a peer
+    // using software mbedtls (e.g. Nordic/OTBR) sends 31 or fewer bytes
+    // whenever r has leading zero bytes (~1/256 per proof).
+    if (len < 1 + 1 + 32 + 32 + 1 + 1 + 32 + 32 + 1) {
         return MBEDTLS_ERR_ECP_BUFFER_TOO_SMALL;
     }
     // X lens 0x41
@@ -238,15 +243,20 @@ int parse_ecjpake_keykp_from_buf(const unsigned char* buf, size_t len,
     memcpy(key->zkp.V.y, buf + offset, 32);
     offset += 32;
 
-    // r lens 0x20
-    if (buf[offset++] != 0x20) {
-        log_error("r lens error 0x%02X\n", buf[offset - 1]);
+    // r lens: 1..32 (minimal big-endian encoding from mbedtls)
+    r_len = buf[offset++];
+    if (r_len == 0 || r_len > 32) {
+        log_error("r lens error 0x%02X\n", r_len);
         return MBEDTLS_ERR_ECP_BAD_INPUT_DATA;
     }
+    if (len - offset < r_len) {
+        return MBEDTLS_ERR_ECP_BUFFER_TOO_SMALL;
+    }
 
-    // r (32 bytes)
-    memcpy(key->zkp.r, buf + offset, 32);
-    offset += 32;
+    // r: left-pad with zeros to the fixed 32-byte big-endian field
+    memset(key->zkp.r, 0, 32 - r_len);
+    memcpy(key->zkp.r + (32 - r_len), buf + offset, r_len);
+    offset += r_len;
 
     if (parsed_len)
         *parsed_len = offset;
