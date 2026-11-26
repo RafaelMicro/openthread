@@ -44,6 +44,8 @@
 #include <openthread/instance.h>
 #include <stdio.h>
 
+#include "ot_radio_band.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif

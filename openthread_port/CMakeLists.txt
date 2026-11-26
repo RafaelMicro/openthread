@@ -50,7 +50,7 @@ sdk_add_private_include_directories(
     ${CMAKE_SOURCE_DIR}/components/network/thread/openthread/examples/config
 )
 
-if((${CONFIG_CHIP} STREQUAL "RT584S") OR (${CONFIG_CHIP} STREQUAL "RT584H") OR (${CONFIG_CHIP} STREQUAL "RT584L"))
+if((${CONFIG_CHIP} STREQUAL "RF1301") OR (${CONFIG_CHIP} STREQUAL "RT584H") OR (${CONFIG_CHIP} STREQUAL "RT584L") OR (${CONFIG_CHIP} STREQUAL "RT584HA4"))
 sdk_add_include_directories(
     ${CMAKE_SOURCE_DIR}/components/platform/hosal/hosal_rt584/Inc
 )

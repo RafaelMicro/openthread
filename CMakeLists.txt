@@ -209,9 +209,49 @@ if((${CONFIG_CHIP} STREQUAL "RT581") OR (${CONFIG_CHIP} STREQUAL "RT582") OR (${
     add_compile_options(
         -DOPENTHREAD_CONFIG_CSL_RECEIVE_TIME_AHEAD=320
     )
-elseif((${CONFIG_CHIP} STREQUAL "RT584H") OR (${CONFIG_CHIP} STREQUAL "RT584HA4") OR (${CONFIG_CHIP} STREQUAL "RT584L"))
+elseif((${CONFIG_CHIP} STREQUAL "RT584H") OR (${CONFIG_CHIP} STREQUAL "RT584HA4") OR (${CONFIG_CHIP} STREQUAL "RT584L") OR (${CONFIG_CHIP} STREQUAL "RF1301"))
     add_compile_options(
         -DOPENTHREAD_CONFIG_CSL_RECEIVE_TIME_AHEAD=1200
+    )
+endif()
+
+# Radio band (Kconfig OT_RADIO_BAND). 2.4 GHz is the OpenThread default and needs
+# no extra options. 915 MHz Sub-G uses OpenThread's PROPRIETARY radio mode, the same
+# way Silicon Labs' single-band proprietary sub-GHz support does: the two standard
+# bands are switched off and a channel page / range / mask is given instead.
+# The channel -> frequency mapping lives in openthread_port (ot_radio_band.h).
+if(CONFIG_OT_BAND_SUBG_915)
+    # Same defaults as Kconfig, in case an older .config does not list them.
+    if(NOT DEFINED CONFIG_OT_SUBG_CHANNEL_PAGE)
+        set(CONFIG_OT_SUBG_CHANNEL_PAGE 23)
+    endif()
+    if(NOT DEFINED CONFIG_OT_SUBG_CHANNEL_MIN)
+        set(CONFIG_OT_SUBG_CHANNEL_MIN 0)
+    endif()
+    if(NOT DEFINED CONFIG_OT_SUBG_CHANNEL_MAX)
+        set(CONFIG_OT_SUBG_CHANNEL_MAX 24)
+    endif()
+    math(EXPR OT_SUBG_CHANNEL_MASK
+         "((1 << (${CONFIG_OT_SUBG_CHANNEL_MAX} + 1)) - 1) & ~((1 << ${CONFIG_OT_SUBG_CHANNEL_MIN}) - 1)"
+         OUTPUT_FORMAT HEXADECIMAL)
+    add_compile_options(
+        -DOPENTHREAD_CONFIG_PLATFORM_RADIO_PROPRIETARY_SUPPORT=1
+        -DOPENTHREAD_CONFIG_RADIO_2P4GHZ_OQPSK_SUPPORT=0
+        -DOPENTHREAD_CONFIG_RADIO_915MHZ_OQPSK_SUPPORT=0
+        -DOPENTHREAD_CONFIG_PLATFORM_RADIO_PROPRIETARY_CHANNEL_PAGE=${CONFIG_OT_SUBG_CHANNEL_PAGE}
+        -DOPENTHREAD_CONFIG_PLATFORM_RADIO_PROPRIETARY_CHANNEL_MIN=${CONFIG_OT_SUBG_CHANNEL_MIN}
+        -DOPENTHREAD_CONFIG_PLATFORM_RADIO_PROPRIETARY_CHANNEL_MAX=${CONFIG_OT_SUBG_CHANNEL_MAX}
+        -DOPENTHREAD_CONFIG_PLATFORM_RADIO_PROPRIETARY_CHANNEL_MASK=${OT_SUBG_CHANNEL_MASK}
+        -DOPENTHREAD_CONFIG_DEFAULT_CHANNEL=${CONFIG_OT_SUBG_CHANNEL_MIN}
+        # CSL timing is derived from the 2.4 GHz PHY constants (250 kbps); the 25 kbps
+        # Sub-G PHY does not match, so CSL is off in this band. -U first because the
+        # FTD/MTD blocks above already define these with -D. The value is written
+        # as 0x0, not 0: CMake drops a repeated identical option (the MTD block
+        # already has =0), which would leave only the -U and undefine the macro.
+        -UOPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
+        -DOPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE=0x0
+        -UOPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
+        -DOPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE=0x0
     )
 endif()
 

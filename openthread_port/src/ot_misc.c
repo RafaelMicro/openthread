@@ -16,7 +16,7 @@
 #include "stdio.h"
 #include "wdt.h"
 
-#if defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
+#if defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4) || defined(CONFIG_RF1301)
 #include "dpd.h"
 #endif
 
@@ -37,7 +37,7 @@ void otPlatReset(otInstance* aInstance) {
     #if defined(CONFIG_RT581) || defined(CONFIG_RT582) || defined(CONFIG_RT583)
     sys_set_retention_reg(6, 7);
     sys_set_retention_reg(7, 0);
-    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
+    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4) || defined(CONFIG_RF1301)
     set_retention_reg0(7);
     set_retention_reg1(0);
     #endif

@@ -33,6 +33,9 @@
 #include "util_string.h"
 #include "cli.h"
 #include "log.h"
+#if defined(CONFIG_OT_BAND_SUBG_915)
+#include "hosal_rf.h"
+#endif
 #include "flashctl.h"
 #include "rf_mcu_ahb.h"
 #include "hosal_lpm.h"
@@ -40,9 +43,17 @@
 //                Private Definitions of const value
 //=============================================================================
 #define CCA_THRESHOLD_UNINIT (127)
+#if defined(CONFIG_OT_BAND_SUBG_915)
+#define CCA_THRESHOLD_DEFAULT (OT_BAND_PHY_CCA_THRESHOLD)
+#elif defined(CONFIG_OT_BAND_2P4G)
 #define CCA_THRESHOLD_DEFAULT (85) // dBm  - default for 2.4GHz 802.15.4
+#endif
 
+#if defined(CONFIG_OT_BAND_SUBG_915)
+#define RAFAEL_RECEIVE_SENSITIVITY (OT_BAND_RECEIVE_SENSITIVITY)
+#elif defined(CONFIG_OT_BAND_2P4G)
 #define RAFAEL_RECEIVE_SENSITIVITY (101)
+#endif
 
 #define RX_CONTROL_FIELD_LENGTH (7)
 #define RX_STATUS_LENGTH        (5)
@@ -53,6 +64,14 @@
 #define RX_LENGTH               (MAX_RF_LEN + RX_HEADER_LENGTH + RX_APPEND_LENGTH)
 #define FCF_LENGTH              (2)
 
+#if defined(CONFIG_OT_BAND_SUBG_915)
+#define PHY_PIB_TURNAROUND_TIMER    OT_BAND_PHY_TURNAROUND_TIMER
+#define PHY_PIB_CCA_DETECTED_TIME   OT_BAND_PHY_CCA_DETECTED_TIME
+#define PHY_PIB_CCA_DETECT_MODE     OT_BAND_PHY_CCA_DETECT_MODE
+#define PHY_PIB_CCA_THRESHOLD       CCA_THRESHOLD_DEFAULT
+#define MAC_PIB_UNIT_BACKOFF_PERIOD OT_BAND_MAC_UNIT_BACKOFF_PERIOD
+#define MAC_PIB_MAC_ACK_WAIT_DURATION OT_BAND_MAC_ACK_WAIT_DURATION
+#elif defined(CONFIG_OT_BAND_2P4G)
 #define PHY_PIB_TURNAROUND_TIMER    192
 #define PHY_PIB_CCA_DETECTED_TIME   128 // 8 symbols
 #define PHY_PIB_CCA_DETECT_MODE     0
@@ -60,6 +79,7 @@
 #define MAC_PIB_UNIT_BACKOFF_PERIOD 320
 #define MAC_PIB_MAC_ACK_WAIT_DURATION                                          \
     544 // non-beacon mode; 864 for beacon mode
+#endif
 #define MAC_PIB_MAC_MAX_BE                    8
 #define MAC_PIB_MAC_MAX_FRAME_TOTAL_WAIT_TIME 16416
 #define MAC_PIB_MAC_MAX_FRAME_RETRIES         4
@@ -80,8 +100,13 @@ static bool hasFramePending(const otRadioFrame* aFrame);
 //                Private ENUM
 //=============================================================================
 enum {
+#if defined(CONFIG_OT_BAND_SUBG_915)
+    kMinChannel = OT_BAND_CHANNEL_MIN,
+    kMaxChannel = OT_BAND_CHANNEL_MAX,
+#elif defined(CONFIG_OT_BAND_2P4G)
     kMinChannel = 11,
     kMaxChannel = 26,
+#endif
 };
 
 enum {
@@ -156,6 +181,19 @@ static uint32_t sExtendAddr_1 = 0x05060709;
 static uint16_t sPANID = 0xFFFF;
 static uint8_t sCoordinator = 0;
 static uint8_t sCurrentChannel = kMinChannel;
+#if defined(CONFIG_OT_BAND_SUBG_915)
+/* Sub-G: the RF takes the frequency in kHz (lmac15p4_channel_set() is 2.4 GHz only). */
+static void ot_radio_subg_frequency_set(uint32_t aKhz)
+{
+    static uint32_t sNowKhz = 0xFFFFFFFF;
+
+    if (sNowKhz != aKhz)
+    {
+        sNowKhz = aKhz;
+        hosal_rf_ioctl(HOSAL_RF_IOCTL_FREQUENCY_SET, (void *)aKhz);
+    }
+}
+#endif
 static otRadioState sState = OT_RADIO_STATE_DISABLED;
 
 // static queue_t rf_rx_queue;
@@ -411,7 +449,18 @@ otError otPlatRadioSetCcaEnergyDetectThreshold(otInstance *aInstance, int8_t aTh
     // log_info("%s", __func__);
     OT_UNUSED_VARIABLE(aInstance);
 
+#if defined(CONFIG_OT_BAND_SUBG_915)
+    /* The host passes dBm (negative, e.g. -55); the PIB takes the magnitude
+     * (55 = -55 dBm), like CCA_THRESHOLD_DEFAULT and the Get above. */
+    if (aThreshold >= 0)
+    {
+        return OT_ERROR_INVALID_ARGS;
+    }
+    sCCAThreshold = (uint8_t)(-aThreshold);
+    sCcaThresholdDbm = (int8_t)(-aThreshold);
+#elif defined(CONFIG_OT_BAND_2P4G)
     sCCAThreshold = aThreshold;
+#endif
 
     lmac15p4_phy_pib_set(sTurnaroundTime, sCCAMode, sCCAThreshold, sCCADuration);
 
@@ -631,7 +680,11 @@ otError otPlatRadioEnergyScan(otInstance *aInstance, uint8_t aScanChannel, uint1
     //if (aScanChannel != sCurrentChannel)
     {
         sCurrentChannel        = aScanChannel;
+#if defined(CONFIG_OT_BAND_SUBG_915)
+        ot_radio_subg_frequency_set(OT_BAND_FREQUENCY_KHZ(sCurrentChannel)); /* kHz */
+#elif defined(CONFIG_OT_BAND_2P4G)
         lmac15p4_channel_set((lmac154_channel_t)(sCurrentChannel - kMinChannel));
+#endif
     }
 
     rssi_value = lmac15p4_read_rssi();
@@ -716,7 +769,11 @@ otError otPlatRadioReceive(otInstance *aInstance, uint8_t aChannel)
         if (aChannel != sCurrentChannel)
         {
             sCurrentChannel = aChannel;
+#if defined(CONFIG_OT_BAND_SUBG_915)
+            ot_radio_subg_frequency_set(OT_BAND_FREQUENCY_KHZ(sCurrentChannel)); /* kHz */
+#elif defined(CONFIG_OT_BAND_2P4G)
             lmac15p4_channel_set((lmac154_channel_t)(sCurrentChannel - kMinChannel));
+#endif
         }
         if (sAuto_State_Set != true)
         {
@@ -869,7 +926,11 @@ otError otPlatRadioTransmit(otInstance *aInstance, otRadioFrame *aFrame)
         //if (sCurrentChannel != aFrame->mChannel)
         {
             sCurrentChannel = aFrame->mChannel;
+#if defined(CONFIG_OT_BAND_SUBG_915)
+            ot_radio_subg_frequency_set(OT_BAND_FREQUENCY_KHZ(sCurrentChannel)); /* kHz */
+#elif defined(CONFIG_OT_BAND_2P4G)
             lmac15p4_channel_set((lmac154_channel_t)(sCurrentChannel - kMinChannel));
+#endif
         }
     }
     RfMcu_HostCtrlAhb(COMM_SUBSYSTEM_HOST_CTRL_WAKE_UP);
@@ -1038,7 +1099,11 @@ otError otPlatRadioReceiveAt(otInstance *aInstance,
     if (aChannel != sCurrentChannel)
     {
         sCurrentChannel = aChannel;
+#if defined(CONFIG_OT_BAND_SUBG_915)
+        ot_radio_subg_frequency_set(OT_BAND_FREQUENCY_KHZ(sCurrentChannel)); /* kHz */
+#elif defined(CONFIG_OT_BAND_2P4G)
         lmac15p4_channel_set((lmac154_channel_t)(sCurrentChannel - kMinChannel));
+#endif
     }
     lmac15p4_csl_receive_at_set(aStart, aDuration);
     return OT_ERROR_NONE;
@@ -1269,7 +1334,11 @@ static void _TxDoneEvent(uint32_t tx_status)
         {
             otRadio_var.pAckFrame->mLength = lmac15p4_read_ack((uint8_t *)otRadio_var.pAckFrame->mPsdu, (uint8_t *)&ack_now32Time, 0, (uint8_t *)&ack_rssi);
             otRadio_var.pAckFrame->mInfo.mRxInfo.mTimestamp = longtime_to_longlong_time(&ack_prev32Time, ack_now32Time, &ack_timerWraps);
+#if defined(CONFIG_OT_BAND_SUBG_915)
+            otRadio_var.pAckFrame->mInfo.mRxInfo.mTimestamp -= OT_BAND_ACK_TS_ADJUST_US(otRadio_var.pAckFrame->mLength);
+#elif defined(CONFIG_OT_BAND_2P4G)
             otRadio_var.pAckFrame->mInfo.mRxInfo.mTimestamp -= (130 + (otRadio_var.pAckFrame->mLength + 1) * 32);
+#endif
 
 
             OT_NOTIFY(OT_SYSTEM_EVENT_RADIO_TX_ACKED);
@@ -1301,6 +1370,18 @@ static void _RxDoneEvent(uint16_t packet_length, uint8_t *rx_data_address,
     static uint8_t rx_done_cnt = 0;
     uint8_t pending_bit_status = 0;
 
+#if defined(CONFIG_OT_BAND_SUBG_915)
+    /* Sub-G O-QPSK: the RUCI rx control field has rssi = 0. The RSSI is the last
+     * byte of the event, signed dBm (the PSDU is packet_length - 9 bytes after the
+     * 8 byte header, one byte follows it). Keep the magnitude, like the code below.
+     * Found by dumping raw events; not from a specification. */
+    if (rssi == 0 && packet_length > 9)
+    {
+        int8_t dbm = (int8_t)rx_data_address[packet_length - 1];
+        rssi       = (dbm < 0) ? (uint8_t)(-dbm) : 0;
+    }
+#endif
+
     if (crc_status == 0)
     {
         OT_ENTER_CRITICAL();
@@ -1325,10 +1406,14 @@ static void _RxDoneEvent(uint16_t packet_length, uint8_t *rx_data_address,
             p->frame.mInfo.mRxInfo.mRssi = -rssi;
             p->frame.mInfo.mRxInfo.mLqi = ((RAFAEL_RECEIVE_SENSITIVITY - rssi) * 0xFF) / RAFAEL_RECEIVE_SENSITIVITY;
 
-#ifdef CONFIG_OT_DEVICE_TYPE_RCP
+#if defined(CONFIG_OT_DEVICE_TYPE_RCP) && !defined(CONFIG_OT_BAND_SUBG_915)
             p->frame.mInfo.mRxInfo.mTimestamp -= (2500);
 #else
+#if defined(CONFIG_OT_BAND_SUBG_915)
+            p->frame.mInfo.mRxInfo.mTimestamp -= OT_BAND_RX_TS_ADJUST_US(p->frame.mLength);
+#elif defined(CONFIG_OT_BAND_2P4G)
             p->frame.mInfo.mRxInfo.mTimestamp -= (50 + (p->frame.mLength + 1) * 32);
+#endif
 #endif
             p->frame.mInfo.mRxInfo.mAckedWithFramePending = false;
             pending_bit_status = (((*(rx_data_address + 8 + p->frame.mLength + 3)) & 0x20) >> 5);
@@ -1444,7 +1529,11 @@ void ot_radioInit()
     mac_cb.tx_cb = _TxDoneEvent;
     lmac15p4_cb_set(0, &mac_cb);
 
+#if defined(CONFIG_OT_BAND_SUBG_915)
+    ot_radio_subg_frequency_set(OT_BAND_FREQUENCY_KHZ(sCurrentChannel)); /* kHz */
+#elif defined(CONFIG_OT_BAND_2P4G)
     lmac15p4_channel_set((lmac154_channel_t)(sCurrentChannel - kMinChannel));  
+#endif
     /* Auto ACK */
     lmac15p4_auto_ack_set(true);
     /* Auto State */

@@ -45,7 +45,7 @@ static uint32_t otAlarm_offset = 0xFFFFFFF;
 #if defined(CONFIG_RT581) || defined(CONFIG_RT582) || defined(CONFIG_RT583)
     #define ALARM_MICRO_SEC_TO_TIMER_TICK(n)                                        \
         ((uint32_t)((((uint64_t)(n)) + 12ULL) / 25ULL))
-#elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
+#elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4) || defined(CONFIG_RF1301)
     #define ALARM_MICRO_SEC_TO_TIMER_TICK(n)                                        \
         ((uint32_t)((((uint64_t)(n) * 4ULL) + 62ULL) / 125ULL))
 #endif
@@ -73,7 +73,7 @@ void ot_alarmInit(void) {
     timern_t* TIMER = TIMER3;
     NVIC_DisableIRQ((IRQn_Type)(Timer3_IRQn));
     NVIC_SetPriority((IRQn_Type)(Timer3_IRQn), 2);
-    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
+    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4) || defined(CONFIG_RF1301)
     slowtimern_t* TIMER = SLOWTIMER1;
     NVIC_DisableIRQ((IRQn_Type)(SlowTimer1_IRQn));
     NVIC_SetPriority((IRQn_Type)(SlowTimer1_IRQn), 2);
@@ -91,7 +91,7 @@ void ot_alarmInit(void) {
     #if defined(CONFIG_RT581) || defined(CONFIG_RT582) || defined(CONFIG_RT583)
     timer_callback_register(3, otPlatALarm_usTimerCallback);
     NVIC_EnableIRQ((IRQn_Type)Timer3_IRQn);
-    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
+    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4) || defined(CONFIG_RF1301)
     slowtimer_callback_register(1, otPlatALarm_usTimerCallback);
     NVIC_EnableIRQ((IRQn_Type)SlowTimer1_IRQn);
     #endif
@@ -164,7 +164,7 @@ void otPlatAlarmMicroStartAt(otInstance* aInstance, uint32_t aT0,
     OT_UNUSED_VARIABLE(aInstance);
     #if defined(CONFIG_RT581) || defined(CONFIG_RT582) || defined(CONFIG_RT583)
     timern_t* TIMER = TIMER3;
-    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
+    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4) || defined(CONFIG_RF1301)
     slowtimern_t* TIMER = SLOWTIMER1;
     #endif
     uint32_t Curr_us = otPlatTimeGet();
@@ -195,7 +195,7 @@ void otPlatAlarmMicroStop(otInstance* aInstance) {
     OT_UNUSED_VARIABLE(aInstance);
     #if defined(CONFIG_RT581) || defined(CONFIG_RT582) || defined(CONFIG_RT583)
     timern_t* TIMER = TIMER3;
-    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
+    #elif defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4) || defined(CONFIG_RF1301) 
     slowtimern_t* TIMER = SLOWTIMER1;
     #endif
     TIMER->control.bit.en = 0;
